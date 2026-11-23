@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>4 Brothers 3D House Plots — Exact 1:1 Feet Architectural Model</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+    }
+    #scene-container {
+      position: fixed; inset: 0; width: 100%; height: 100%; cursor: grab;
+      touch-action: none;
+    }
+    #scene-container:active { cursor: grabbing; }
+    .glass {
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32);
+    }
+    .room-btn { transition: all 0.18s ease; }
+    .room-btn.active {
+      background: #10b981;
+      color: #022c22;
+      font-weight: 600;
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.45);
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    #minimap-canvas { cursor: pointer; }
+  </style>
+</head>
+<body class="text-slate-100">
+
+  <!-- 3D Viewport -->
+  <div id="scene-container"></div>
+
+  <!-- Top Left: Brand & Live Location Badge -->
+  <div class="fixed top-3 left-3 z-20 flex flex-col gap-2 max-w-[calc(100vw-24px)] sm:max-w-xs pointer-events-none">
+    <div class="glass rounded-2xl px-3.5 py-2.5 pointer-events-auto flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+        <i data-lucide="home" class="w-5 h-5 text-emerald-400"></i>
+      </div>
+      <div class="min-w-0">
+        <div class="text-xs font-semibold tracking-wide text-emerald-300 uppercase">4 Brothers • Exact 1:1 Feet Scale</div>
+        <div class="text-sm font-bold text-white truncate">4,011 sq ft • 4 Independent Homes</div>
+      </div>
+    </div>
+
+    <div class="glass rounded-xl px-3 py-1.5 pointer-events-auto inline-flex items-center gap-2 self-start">
+      <span id="location-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span id="location-label" class="text-xs font-medium text-slate-100">Aerial View • 4 Plots & 2 Raste</span>
+      <span id="location-area" class="text-[11px] text-emerald-300 font-semibold hidden sm:inline">1:1 Feet Scale</span>
+    </div>
+  </div>
+
+  <!-- Top Right: Lighting, Roof Cutaway, Dimensions & Minimap Toggles -->
+  <div class="fixed top-3 right-3 z-20 flex flex-wrap justify-end gap-1.5 max-w-[62vw] sm:max-w-lg">
+    <div class="glass rounded-xl p-1 flex items-center gap-0.5">
+      <button id="tod-morning" data-tod="morning" class="tod-btn px-2 py-1 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition" title="Morning Sunlight">Morning</button>
+      <button id="tod-noon" data-tod="noon" class="tod-btn px-2 py-1 rounded-lg text-[11px] bg-amber-400 text-slate-950 font-semibold transition" title="Midday Sun">Noon</button>
+      <button id="tod-sunset" data-tod="sunset" class="tod-btn px-2 py-1 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition" title="Sunset Light">Sunset</button>
+      <button id="tod-night" data-tod="night" class="tod-btn px-2 py-1 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition" title="Night Lights">Night</button>
+    </div>
+
+    <button id="btn-roof" class="glass rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5 hover:bg-slate-800/80 transition" title="Toggle Roof On / Cutaway">
+      <i data-lucide="layers" class="w-3.5 h-3.5 text-amber-300"></i>
+      <span id="roof-label">Roof: On</span>
+    </button>
+
+    <button id="btn-dims" class="glass rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5 hover:bg-slate-800/80 transition" title="Show/Hide Feet Dimensions">
+      <i data-lucide="ruler" class="w-3.5 h-3.5 text-sky-300"></i>
+      <span id="dims-label">Dims: On</span>
+    </button>
+
+    <button id="btn-map-toggle" class="glass rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5 hover:bg-slate-800/80 transition" title="Show/Hide 2D Map">
+      <i data-lucide="map" class="w-3.5 h-3.5 text-emerald-300"></i>
+      <span class="hidden sm:inline">Map</span>
+    </button>
+  </div>
+
+  <!-- Scroll-to-Enter Progress Banner -->
+  <div id="scroll-enter-banner" class="fixed top-20 left-1/2 -translate-x-1/2 z-20 glass rounded-full px-4 py-2 flex items-center gap-2.5 opacity-0 pointer-events-none transition-all duration-300">
+    <i data-lucide="door-open" class="w-4 h-4 text-emerald-400"></i>
+    <span id="scroll-enter-text" class="text-xs font-semibold text-white">Keep scrolling in to walk inside...</span>
+    <div class="w-16 h-1.5 rounded-full bg-slate-700 overflow-hidden">
+      <div id="scroll-enter-bar" class="h-full bg-emerald-400 w-0 transition-all duration-100"></div>
+    </div>
+  </div>
+
+  <!-- Interactive 2D Floor Plan Minimap (Bottom Right) -->
+  <div id="minimap-panel" class="fixed bottom-24 right-3 z-20 glass rounded-2xl p-2.5 w-48 sm:w-56 transition-all duration-200">
+    <div class="flex items-center justify-between mb-1.5 px-0.5">
+      <span class="text-[11px] font-semibold text-slate-200 flex items-center gap-1">
+        <i data-lucide="compass" class="w-3.5 h-3.5 text-emerald-400"></i>
+        Plot Map (Click to Visit)
+      </span>
+      <span class="text-[10px] font-bold text-amber-300">N ↑</span>
+    </div>
+    <canvas id="minimap-canvas" width="220" height="230" class="w-full h-auto rounded-xl bg-slate-950/90 border border-white/10"></canvas>
+    <div class="mt-1.5 flex items-center justify-between text-[10px] text-slate-400 px-0.5">
+      <span>H1: 897 • H2: 1,040</span>
+      <span>H3: 927 • H4: 1,147</span>
+    </div>
+  </div>
+
+  <!-- Walk Inside D-Pad (Bottom Left, visible in Walkthrough Mode) -->
+  <div id="walk-pad" class="fixed bottom-24 left-3 z-20 glass rounded-2xl p-2 hidden flex-col items-center gap-1">
+    <button data-move="forward" class="walk-ctrl w-10 h-9 rounded-lg bg-white/10 hover:bg-emerald-500/30 active:bg-emerald-500/50 flex items-center justify-center" title="Walk Forward (W / Scroll Up)">
+      <i data-lucide="chevron-up" class="w-5 h-5"></i>
+    </button>
+    <div class="flex items-center gap-1">
+      <button data-move="left" class="walk-ctrl w-10 h-9 rounded-lg bg-white/10 hover:bg-emerald-500/30 active:bg-emerald-500/50 flex items-center justify-center" title="Strafe Left (A)">
+        <i data-lucide="chevron-left" class="w-5 h-5"></i>
+      </button>
+      <button data-move="backward" class="walk-ctrl w-10 h-9 rounded-lg bg-white/10 hover:bg-emerald-500/30 active:bg-emerald-500/50 flex items-center justify-center" title="Walk Back (S / Scroll Down)">
+        <i data-lucide="chevron-down" class="w-5 h-5"></i>
+      </button>
+      <button data-move="right" class="walk-ctrl w-10 h-9 rounded-lg bg-white/10 hover:bg-emerald-500/30 active:bg-emerald-500/50 flex items-center justify-center" title="Strafe Right (D)">
+        <i data-lucide="chevron-right" class="w-5 h-5"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Bottom Control Dock -->
+  <div class="fixed bottom-3 left-1/2 -translate-x-1/2 z-20 w-[calc(100vw-24px)] max-w-4xl flex flex-col items-center gap-1.5 pointer-events-none">
+    <div id="controls-hint" class="glass rounded-full px-3 py-1 text-[11px] text-slate-300 pointer-events-auto text-center">
+      Drag to rotate • <span class="text-emerald-300 font-semibold">Scroll In to Enter Inside</span> • Right-drag to pan
+    </div>
+
+    <div class="glass rounded-2xl p-1.5 flex items-center gap-1.5 max-w-full overflow-x-auto no-scrollbar pointer-events-auto">
+      <button id="btn-mode-toggle" class="shrink-0 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/25 transition">
+        <i data-lucide="footprints" class="w-4 h-4"></i>
+        <span id="mode-btn-text">Enter Inside</span>
+      </button>
+
+      <div class="w-px h-6 bg-white/15 shrink-0"></div>
+
+      <button data-room="aerial" class="room-btn active shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">Aerial</button>
+      <button data-room="badaRasta" class="room-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">Bada Rasta</button>
+      <button data-room="chotaRasta" class="room-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">Chota Rasta</button>
+      <button data-room="courtyard" class="room-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">Courtyard</button>
+      <button data-room="plot1" class="room-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">House 1 (39×23)</button>
+      <button data-room="plot2" class="room-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">House 2 (40×26)</button>
+      <button data-room="plot3" class="room-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">House 3 (927)</button>
+      <button data-room="plot4" class="room-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:bg-white/10">House 4 (22.5×51)</button>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    if (window.lucide) lucide.createIcons();
+
+    // =========================================================================
+    // 1. REAL-WORLD ARCHITECTURAL SCALE (EXACTLY 1.0 THREE.JS UNIT = 1.0 FOOT)
+    //    North = -Z (0), South = +Z (107), West = -X (0), East = +X (103)
+    //    House 2 updated: 40 ft × 26 ft (x: 0..40, z: 51..77), side bathroom REMOVED
+    //    Every bed is 6.0 × 6.5 ft, sofa 6.5 × 2.8 ft, doors 3.2 × 7.0 ft, ceiling 10.5 ft
+    // =========================================================================
+    const WALL_H = 10.5;   // Standard 10.5 ft residential ceiling height
+    const EXT_T  = 0.75;   // 9-inch exterior brick wall
+    const INT_T  = 0.42;   // 5-inch interior partition wall
+    const EYE_H  = 5.3;    // Realistic human eye level (5 ft 4 in)
+
+    const ROOM_PRESETS = {
+      aerial: {
+        name: 'Aerial View • 4 Plots & 2 Raste',
+        area: '4,011 sq ft total',
+        mode: 'orbit',
+        target: new THREE.Vector3(48, 3, 52),
+        radius: 130,
+        theta: 0.56,
+        phi: 0.88
+      },
+      badaRasta: {
+        name: 'Bada Rasta (Main Wide Road)',
+        area: 'Main Entry Road',
+        mode: 'walk',
+        pos: new THREE.Vector3(64, EYE_H, 101),
+        yaw: 0.22,
+        pitch: 0.02
+      },
+      chotaRasta: {
+        name: 'Chota Patla Rasta (30 × 6.5 ft)',
+        area: 'Side Narrow Lane',
+        mode: 'walk',
+        pos: new THREE.Vector3(3.25, EYE_H, 102),
+        yaw: 0.0,
+        pitch: 0.02
+      },
+      courtyard: {
+        name: 'Central Open Courtyard',
+        area: 'Shared Green Area',
+        mode: 'walk',
+        pos: new THREE.Vector3(50, EYE_H, 54),
+        yaw: 0.25,
+        pitch: 0.02
+      },
+      plot1: {
+        name: 'House 1 — Brother 1 (2BHK Terracotta Villa)',
+        area: '897 sq ft (39 × 23 ft)',
+        mode: 'walk',
+        pos: new THREE.Vector3(69.5, EYE_H, 38),
+        yaw: -1.35,
+        pitch: -0.02
+      },
+      plot2: {
+        name: 'House 2 — Brother 2 (2BHK Courtyard Home)',
+        area: '1,040 sq ft (40 × 26 ft)',
+        mode: 'walk',
+        pos: new THREE.Vector3(26, EYE_H, 57.5),
+        yaw: 0.55,
+        pitch: -0.02
+      },
+      plot3: {
+        name: 'House 3 — Brother 3 (2BHK L-Shaped Home)',
+        area: '927 sq ft (19.5×34 + 22×12)',
+        mode: 'walk',
+        pos: new THREE.Vector3(31.5, EYE_H, 29),
+        yaw: -0.35,
+        pitch: -0.02
+      },
+      plot4: {
+        name: 'House 4 — Brother 4 (2BHK Sandstone Villa)',
+        area: '1,147 sq ft (22.5 × 51 ft)',
+        mode: 'walk',
+        pos: new THREE.Vector3(16.5, EYE_H, 42),
+        yaw: 0.45,
+        pitch: -0.02
+      }
+    };
+
+    // =========================================================================
+    // 2. THREE.JS SCENE, RENDERER & LIGHTING
+    // =========================================================================
+    const container = document.getElementById('scene-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xcce6f7);
+    scene.fog = new THREE.FogExp2(0xd8ebf7, 0.0017);
+
+    const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.35, 800);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.06;
+    container.appendChild(renderer.domElement);
+
+    const hemiLight = new THREE.HemisphereLight(0xeef7ff, 0x64748b, 0.78);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfff7e8, 1.32);
+    sunLight.position.set(105, 145, 95);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 20;
+    sunLight.shadow.camera.far = 380;
+    const d = 110;
+    sunLight.shadow.camera.left = -d;
+    sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d;
+    sunLight.shadow.camera.bottom = -d;
+    sunLight.shadow.bias = -0.0005;
+    sunLight.target.position.set(50, 0, 52);
+    scene.add(sunLight);
+    scene.add(sunLight.target);
+
+    const interiorLights = [];
+    function addWarmLight(x, y, z, color, intensity, distance) {
+      const pl = new THREE.PointLight(color, intensity, distance, 1.6);
+      pl.position.set(x, y, z);
+      scene.add(pl);
+      interiorLights.push({ light: pl, baseIntensity: intensity });
+      return pl;
+    }
+
+    // =========================================================================
+    // 3. PROCEDURAL TEXTURES (Scaled accurately to real feet!)
+    // =========================================================================
+    function makeCanvasTex(w, h, drawFn, repeatX = 1, repeatY = 1) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      drawFn(ctx, w, h);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeatX, repeatY);
+      tex.encoding = THREE.sRGBEncoding;
+      return tex;
+    }
+
+    const texCourtyardGrass = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#6eb13f';
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 3600; i++) {
+        ctx.fillStyle = i % 3 === 0 ? '#7fc44c' : (i % 3 === 1 ? '#5e9e33' : '#88cf55');
+        ctx.fillRect(Math.random() * w, Math.random() * h, 2, 4);
+      }
+    }, 8, 8);
+
+    const texRoadAsphalt = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 3200; i++) {
+        const v = 58 + Math.floor(Math.random() * 28);
+        ctx.fillStyle = `rgb(${v},${v + 5},${v + 12})`;
+        ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+      }
+    }, 6, 10);
+
+    const texPaverLane = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#b9b2a7';
+      ctx.fillRect(0, 0, w, h);
+      const rows = 8, cols = 4, rw = w / cols, rh = h / rows;
+      for (let r = 0; r < rows; r++) {
+        const off = (r % 2) * (rw / 2);
+        for (let c = -1; c <= cols; c++) {
+          const v = 172 + Math.floor(Math.random() * 22);
+          ctx.fillStyle = `rgb(${v},${v - 5},${v - 12})`;
+          ctx.fillRect(c * rw + off + 2, r * rh + 2, rw - 4, rh - 4);
+        }
+      }
+    }, 2, 10);
+
+    const texWood = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#b9895b';
+      ctx.fillRect(0, 0, w, h);
+      const ph = h / 8;
+      for (let i = 0; i < 8; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#be8e5f' : '#b08052';
+        ctx.fillRect(0, i * ph, w, ph - 1);
+        ctx.fillStyle = '#8b5e36';
+        ctx.fillRect(0, (i + 1) * ph - 1, w, 1);
+      }
+    }, 8, 12);
+
+    const texMarble = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= w; i += 64) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
+      }
+    }, 8, 8);
+
+    const texWarmTile = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#f5e8dc';
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#d8c5b2';
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= w; i += 64) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
+      }
+    }, 8, 6);
+
+    const texStucco = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 2000; i++) {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)';
+        ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+      }
+    }, 4, 2);
+
+    const texRoofTile = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#8c4433';
+      ctx.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 18) {
+        ctx.fillStyle = y % 36 === 0 ? '#7e3c2c' : '#964b39';
+        ctx.fillRect(0, y, w, 16);
+        ctx.fillStyle = '#5c2a1e';
+        ctx.fillRect(0, y + 16, w, 2);
+      }
+    }, 6, 8);
+
+    const texSlateRoof = makeCanvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 16) {
+        ctx.fillStyle = y % 32 === 0 ? '#2b3749' : '#3d4c63';
+        ctx.fillRect(0, y, w, 14);
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, y + 14, w, 2);
+      }
+    }, 7, 6);
+
+    // Distinct Materials for the 4 Brothers' Houses
+    const matH1Ext    = new THREE.MeshStandardMaterial({ map: texStucco, color: 0xfaf0eb, roughness: 0.8 });
+    const matH1Int    = new THREE.MeshStandardMaterial({ color: 0xfdf7f4, roughness: 0.88 });
+    const matH1Accent = new THREE.MeshStandardMaterial({ color: 0xb8523d, roughness: 0.6 });
+
+    const matH2Ext    = new THREE.MeshStandardMaterial({ map: texStucco, color: 0xedf6ee, roughness: 0.8 });
+    const matH2Int    = new THREE.MeshStandardMaterial({ color: 0xf5fbf6, roughness: 0.88 });
+    const matH2Accent = new THREE.MeshStandardMaterial({ color: 0x1e5245, roughness: 0.6 });
+
+    const matH3Ext    = new THREE.MeshStandardMaterial({ map: texStucco, color: 0xeef5fc, roughness: 0.8 });
+    const matH3Int    = new THREE.MeshStandardMaterial({ color: 0xf6fafe, roughness: 0.88 });
+    const matH3Accent = new THREE.MeshStandardMaterial({ color: 0x2c4c70, roughness: 0.55 });
+
+    const matH4Ext    = new THREE.MeshStandardMaterial({ map: texStucco, color: 0xf7ecd9, roughness: 0.82 });
+    const matH4Int    = new THREE.MeshStandardMaterial({ color: 0xfcf6ec, roughness: 0.88 });
+    const matH4Accent = new THREE.MeshStandardMaterial({ color: 0x6e472b, roughness: 0.65 });
+
+    const matDarkFrame   = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.3 });
+    const matWoodDoor    = new THREE.MeshStandardMaterial({ color: 0x7c4a26, roughness: 0.6 });
+    const matGlass       = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.36 });
+    const matCeiling     = new THREE.MeshStandardMaterial({ color: 0xfafaf9, roughness: 0.9 });
+    const matTeak        = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.55 });
+    const matWalnut      = new THREE.MeshStandardMaterial({ color: 0x4a2e1b, roughness: 0.5 });
+    const matCreamFabric = new THREE.MeshStandardMaterial({ color: 0xf1ece1, roughness: 0.9 });
+    const matGranite     = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.2, metalness: 0.25 });
+    const matSteel       = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.25, metalness: 0.8 });
+    const matScreen      = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.15, metalness: 0.5 });
+    const matMarbleTop   = new THREE.MeshStandardMaterial({ map: texMarble, roughness: 0.25 });
+    const leafMats = [
+      new THREE.MeshStandardMaterial({ color: 0x2d6a32, roughness: 0.85 }),
+      new THREE.MeshStandardMaterial({ color: 0x3b7d3c, roughness: 0.85 }),
+      new THREE.MeshStandardMaterial({ color: 0x4c9142, roughness: 0.85 })
+    ];
+
+    // =========================================================================
+    // 4. CLEAN ARCHITECTURAL BASE PLANE (Zero Extra Outside Objects)
+    // =========================================================================
+    const basePlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(420, 420),
+      new THREE.MeshStandardMaterial({ color: 0xdbe3ea, roughness: 0.95 })
+    );
+    basePlane.rotation.x = -Math.PI / 2;
+    basePlane.position.set(50, -0.05, 53);
+    basePlane.receiveShadow = true;
+    scene.add(basePlane);
+
+    // =========================================================================
+    // 5. COLLIDERS & ARCHITECTURAL WALL BUILDER
+    // =========================================================================
+    const colliders = [];
+
+    function addBox(w, h, d, x, y, z, mat, parent = scene, castShadow = true, receiveShadow = true) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      m.castShadow = castShadow;
+      m.receiveShadow = receiveShadow;
+      parent.add(m);
+      return m;
+    }
+
+    function buildWall(x1, z1, x2, z2, thickness, mat, openings = [], parent = scene, wallH = WALL_H) {
+      const isHoriz = Math.abs(z2 - z1) < 0.01;
+      const len = isHoriz ? Math.abs(x2 - x1) : Math.abs(z2 - z1);
+      const startX = Math.min(x1, x2);
+      const startZ = Math.min(z1, z2);
+      const sorted = [...openings].sort((a, b) => a.offset - b.offset);
+      let cursor = 0;
+
+      function emitSolid(from, to, yBot, yTop, addCol) {
+        const segLen = to - from;
+        if (segLen <= 0.05) return;
+        const h = yTop - yBot;
+        const cx = isHoriz ? startX + from + segLen / 2 : startX;
+        const cz = isHoriz ? startZ : startZ + from + segLen / 2;
+        const w = isHoriz ? segLen : thickness;
+        const d = isHoriz ? thickness : segLen;
+        addBox(w, h, d, cx, yBot + h / 2, cz, mat, parent, true, true);
+        if (addCol) {
+          colliders.push({ minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 });
+        }
+      }
+
+      for (const op of sorted) {
+        const oStart = Math.max(cursor, op.offset);
+        const oEnd = Math.min(len, op.offset + op.width);
+        if (oStart > cursor) emitSolid(cursor, oStart, 0, wallH, true);
+
+        const cx = isHoriz ? startX + (oStart + oEnd) / 2 : startX;
+        const cz = isHoriz ? startZ : startZ + (oStart + oEnd) / 2;
+        const ow = oEnd - oStart;
+
+        if (op.type === 'door' || op.type === 'arch') {
+          const doorH = op.type === 'arch' ? 7.8 : 7.0; // Real 7 ft door height!
+          emitSolid(oStart, oEnd, doorH, wallH, false);
+          const fT = 0.2, fD = thickness + 0.14;
+          if (isHoriz) {
+            addBox(fT, doorH, fD, startX + oStart + fT / 2, doorH / 2, startZ, matDarkFrame, parent);
+            addBox(fT, doorH, fD, startX + oEnd - fT / 2, doorH / 2, startZ, matDarkFrame, parent);
+            addBox(ow, fT, fD, cx, doorH - fT / 2, startZ, matDarkFrame, parent);
+          } else {
+            addBox(fD, doorH, fT, startX, doorH / 2, startZ + oStart + fT / 2, matDarkFrame, parent);
+            addBox(fD, doorH, fT, startX, doorH / 2, startZ + oEnd - fT / 2, matDarkFrame, parent);
+            addBox(fD, fT, ow, startX, doorH - fT / 2, cz, matDarkFrame, parent);
+          }
+          if (op.type === 'door' && op.leaf !== false) {
+            const leafW = Math.min(ow * 0.85, 2.8);
+            const pivot = new THREE.Group();
+            const doorMat = op.glass ? matGlass : (op.doorMat || matWoodDoor);
+            if (isHoriz) {
+              pivot.position.set(startX + oStart + 0.2, 0, startZ);
+              const leaf = new THREE.Mesh(new THREE.BoxGeometry(leafW, doorH - 0.18, 0.14), doorMat);
+              leaf.position.set(leafW / 2, (doorH - 0.18) / 2, 0);
+              leaf.castShadow = true;
+              pivot.add(leaf);
+              pivot.rotation.y = op.swing || 1.25;
+            } else {
+              pivot.position.set(startX, 0, startZ + oStart + 0.2);
+              const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.14, doorH - 0.18, leafW), doorMat);
+              leaf.position.set(0, (doorH - 0.18) / 2, leafW / 2);
+              leaf.castShadow = true;
+              pivot.add(leaf);
+              pivot.rotation.y = op.swing || -1.25;
+            }
+            parent.add(pivot);
+          }
+        } else if (op.type === 'window') {
+          const sill = 3.0, lintel = 7.5; // Real 4.5 ft tall window!
+          emitSolid(oStart, oEnd, 0, sill, true);
+          emitSolid(oStart, oEnd, lintel, wallH, false);
+          const winH = lintel - sill, winY = sill + winH / 2, fD = thickness + 0.18;
+          if (isHoriz) {
+            addBox(ow, 0.18, fD, cx, sill + 0.09, startZ, matDarkFrame, parent);
+            addBox(ow, 0.18, fD, cx, lintel - 0.09, startZ, matDarkFrame, parent);
+            addBox(0.18, winH, fD, startX + oStart + 0.09, winY, startZ, matDarkFrame, parent);
+            addBox(0.18, winH, fD, startX + oEnd - 0.09, winY, startZ, matDarkFrame, parent);
+            addBox(0.1, winH, 0.2, cx, winY, startZ, matDarkFrame, parent);
+            addBox(ow - 0.28, winH - 0.28, 0.06, cx, winY, startZ, matGlass, parent, false, false);
+          } else {
+            addBox(fD, 0.18, ow, startX, sill + 0.09, cz, matDarkFrame, parent);
+            addBox(fD, 0.18, ow, startX, lintel - 0.09, cz, matDarkFrame, parent);
+            addBox(fD, winH, 0.18, startX, winY, startZ + oStart + 0.09, matDarkFrame, parent);
+            addBox(fD, winH, 0.18, startX, winY, startZ + oEnd - 0.09, matDarkFrame, parent);
+            addBox(0.2, winH, 0.1, startX, winY, cz, matDarkFrame, parent);
+            addBox(0.06, winH - 0.28, ow - 0.28, startX, winY, cz, matGlass, parent, false, false);
+          }
+        }
+        cursor = oEnd;
+      }
+      if (cursor < len) emitSolid(cursor, len, 0, wallH, true);
+    }
+
+    // =========================================================================
+    // 6. THE 2 RASTE (ROADS) & CENTRAL GREEN COURTYARD
+    // =========================================================================
+    const siteGroup = new THREE.Group();
+    scene.add(siteGroup);
+
+    function addSlab(x1, z1, x2, z2, mat, yTop = 0.4, parent = siteGroup) {
+      const w = x2 - x1, d = z2 - z1;
+      addBox(w, yTop, d, x1 + w / 2, yTop / 2, z1 + d / 2, mat, parent, false, true);
+    }
+
+    // 1) BADA RASTA (Main Wide Road — exact shaded area on South-East)
+    const matRoad = new THREE.MeshStandardMaterial({ map: texRoadAsphalt, roughness: 0.88 });
+    const matCurb = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.75 });
+    const matLaneMark = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 });
+
+    addSlab(42, 68, 58.5, 88, matRoad, 0.22);
+    addSlab(58.5, 68, 75, 107, matRoad, 0.22);
+
+    addBox(0.55, 0.4, 20, 42.28, 0.2, 78, matCurb, siteGroup);
+    addBox(16.5, 0.4, 0.55, 50.25, 0.2, 87.72, matCurb, siteGroup);
+    addBox(0.55, 0.4, 19, 58.78, 0.2, 97.5, matCurb, siteGroup);
+    addBox(0.55, 0.4, 39, 74.72, 0.2, 87.5, matCurb, siteGroup);
+    for (let lz = 72; lz <= 103; lz += 6.5) {
+      addBox(0.4, 0.04, 3.0, 66.75, 0.24, lz, matLaneMark, siteGroup, false, false);
+    }
+
+    // 2) CHOTA PATLA RASTA (Narrow Side Lane — 30 × 6.5 ft, x=0..6.5, z=77..107)
+    const matSmallRoad = new THREE.MeshStandardMaterial({ map: texPaverLane, roughness: 0.82 });
+    addSlab(0, 77, 6.5, 107, matSmallRoad, 0.24);
+    buildWall(0, 77, 0, 107, 0.55, matH2Ext, [], siteGroup, 5.5);
+    buildWall(6.5, 77, 6.5, 107, 0.55, matH2Ext, [], siteGroup, 5.5);
+
+    // 3) CENTRAL GREEN COURTYARD (adjusted cleanly for House 2's 40 ft width!)
+    const matLawn = new THREE.MeshStandardMaterial({ map: texCourtyardGrass, roughness: 0.92 });
+    addSlab(22.5, 34, 64, 51, matLawn, 0.16);
+    addSlab(40, 51, 64, 68, matLawn, 0.16);
+    addSlab(64, 45, 75, 68, matLawn, 0.16);
+    buildWall(75, 45, 75, 68, 0.65, matH1Ext, [], siteGroup, 6.0);
+
+    // Simple stone walkways connecting Bada Rasta to all 4 Houses' main doors
+    const matPath = new THREE.MeshStandardMaterial({ color: 0xe2dcd2, roughness: 0.8 });
+    addBox(4.5, 0.07, 22, 54, 0.18, 57, matPath, siteGroup, false, true);
+    addBox(38, 0.07, 3.6, 43, 0.18, 41, matPath, siteGroup, false, true);
+    addBox(3.6, 0.07, 11, 29, 0.18, 45.5, matPath, siteGroup, false, true);
+
+    // Map shrubs & small blossoms
+    const flowerColors = [0xfef08a, 0xffffff, 0xf9a8d4];
+    const mapShrubs = [[24.8, 48.5], [42.5, 56.5], [61.5, 44.5], [61.5, 47.5], [71.8, 64.5]];
+    mapShrubs.forEach(([bx, bz], i) => {
+      const b = new THREE.Mesh(new THREE.DodecahedronGeometry(1.3, 1), leafMats[i % leafMats.length]);
+      b.position.set(bx, 1.0, bz);
+      b.scale.y = 0.75;
+      b.castShadow = true;
+      siteGroup.add(b);
+    });
+    const mapFlowers = [[47, 51], [48.2, 52], [53, 58], [54.2, 57]];
+    mapFlowers.forEach(([fx, fz], i) => {
+      const f = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 6, 6),
+        new THREE.MeshBasicMaterial({ color: flowerColors[i % flowerColors.length] })
+      );
+      f.position.set(fx, 0.32, fz);
+      siteGroup.add(f);
+    });
+
+    // =========================================================================
+    // 7. TRUE 1:1 REAL-WORLD FEET FURNITURE FACTORY
+    //    Double Bed = 6.0 × 6.5 ft | 3-Seater Sofa = 6.5 × 2.8 ft | 2-Seater = 4.8 × 2.8 ft
+    //    6-Seater Dining = 5.5 × 3.2 ft | Kitchen Counter = 2.0 ft deep × 2.8 ft high
+    //    Wardrobe = 6.0 × 2.0 × 7.0 ft | Ceiling Fan = 4.0 ft dia
+    // =========================================================================
+    const furnGroup = new THREE.Group();
+    const roofGroup = new THREE.Group();
+    const dimsGroup = new THREE.Group();
+    scene.add(furnGroup);
+    scene.add(roofGroup);
+    scene.add(dimsGroup);
+
+    const ceilingFans = [];
+    function addCeilingFan(x, z, h = WALL_H) {
+      const g = new THREE.Group();
+      g.position.set(x, h - 1.0, z);
+      addBox(0.16, 0.9, 0.16, 0, 0.45, 0, matDarkFrame, g);
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.22, 12), matDarkFrame));
+      for (let i = 0; i < 3; i++) {
+        // 4.0 ft diameter (real 48-inch ceiling fan!)
+        const b = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.06, 0.34), matTeak);
+        const a = (i * Math.PI * 2) / 3;
+        b.position.set(Math.cos(a) * 1.1, 0, Math.sin(a) * 1.1);
+        b.rotation.y = -a;
+        g.add(b);
+      }
+      roofGroup.add(g);
+      ceilingFans.push(g);
+    }
+
+    // EXACT 6.0 ft × 6.5 ft Double Bed + 1.5 ft Nightstands
+    function addDoubleBed(x, z, rotY = 0, duvetColor = 0x3b82f6) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      // Frame: 6.0 ft wide × 6.5 ft long
+      addBox(6.0, 0.95, 6.5, 0, 0.48, 0, matWalnut, g);
+      // Mattress: 5.8 × 6.3 ft, top at 1.65 ft
+      addBox(5.8, 0.65, 6.3, 0, 1.28, 0, matCreamFabric, g);
+      // Duvet / blanket
+      addBox(5.9, 0.22, 4.2, 0, 1.66, 0.95, new THREE.MeshStandardMaterial({ color: duvetColor, roughness: 0.85 }), g);
+      // Headboard: 6.1 ft wide × 3.4 ft tall
+      addBox(6.1, 3.4, 0.32, 0, 1.7, -3.2, matTeak, g);
+      // Two standard pillows (2.1 × 1.3 ft)
+      addBox(2.1, 0.35, 1.3, -1.35, 1.75, -2.2, matCreamFabric, g);
+      addBox(2.1, 0.35, 1.3,  1.35, 1.75, -2.2, matCreamFabric, g);
+      // Side tables (1.5 × 1.5 × 1.7 ft)
+      for (const sx of [-3.95, 3.95]) {
+        addBox(1.5, 1.7, 1.5, sx, 0.85, -2.35, matTeak, g);
+        addBox(0.65, 0.7, 0.65, sx, 2.15, -2.35, new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xf59e0b, emissiveIntensity: 0.35 }), g);
+      }
+      furnGroup.add(g);
+    }
+
+    // Real-scale Sofa (3-seater: 6.5 × 2.8 ft, 2-seater: 4.8 × 2.8 ft)
+    function addSofa(x, z, len = 6.5, rotY = 0, color = 0x334155) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+      addBox(len, 1.15, 2.8, 0, 0.75, 0, m, g);
+      addBox(len, 1.8, 0.55, 0, 1.7, -1.12, m, g);
+      addBox(0.55, 1.55, 2.8, -len / 2 + 0.28, 1.15, 0, m, g);
+      addBox(0.55, 1.55, 2.8,  len / 2 - 0.28, 1.15, 0, m, g);
+      furnGroup.add(g);
+    }
+
+    // Real-scale Coffee Table (3.5 × 2.0 × 1.4 ft)
+    function addCoffeeTable(x, z, rotY = 0) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      addBox(3.5, 0.16, 2.0, 0, 1.32, 0, matTeak, g);
+      for (const lx of [-1.5, 1.5]) {
+        for (const lz of [-0.75, 0.75]) addBox(0.18, 1.25, 0.18, lx, 0.62, lz, matDarkFrame, g);
+      }
+      furnGroup.add(g);
+    }
+
+    // Real-scale 6-Seater Dining Table (5.5 × 3.2 × 2.5 ft) + Chairs (1.5 × 1.5 ft)
+    function addDiningSet(x, z, rotY = 0) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      addBox(5.5, 0.22, 3.2, 0, 2.45, 0, matTeak, g);
+      for (const lx of [-2.4, 2.4]) {
+        for (const lz of [-1.25, 1.25]) addBox(0.22, 2.35, 0.22, lx, 1.18, lz, matWalnut, g);
+      }
+      for (const cx of [-1.75, 0, 1.75]) {
+        // North chairs
+        addBox(1.4, 0.18, 1.4, cx, 1.45, -2.05, matCreamFabric, g);
+        addBox(1.4, 1.45, 0.18, cx, 2.2, -2.68, matTeak, g);
+        // South chairs
+        addBox(1.4, 0.18, 1.4, cx, 1.45, 2.05, matCreamFabric, g);
+        addBox(1.4, 1.45, 0.18, cx, 2.2, 2.68, matTeak, g);
+      }
+      furnGroup.add(g);
+    }
+
+    // Real-scale Wardrobe (6.0 × 2.0 × 7.0 ft)
+    function addWardrobe(x, z, rotY = 0, width = 6.0) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      addBox(width, 7.0, 2.0, 0, 3.5, 0, matWalnut, g);
+      addBox(0.08, 6.6, 0.08, 0, 3.5, 1.02, matSteel, g);
+      furnGroup.add(g);
+    }
+
+    // Real-scale Study Desk (4.0 × 2.0 × 2.5 ft) + Chair
+    function addStudyDesk(x, z, rotY = 0) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      addBox(4.0, 0.16, 2.0, 0, 2.45, 0, matTeak, g);
+      addBox(0.18, 2.4, 1.8, -1.85, 1.2, 0, matDarkFrame, g);
+      addBox(0.18, 2.4, 1.8,  1.85, 1.2, 0, matDarkFrame, g);
+      addBox(1.5, 1.4, 1.5, 0, 0.85, 1.65, matDarkFrame, g);
+      furnGroup.add(g);
+    }
+
+    // Real-scale TV Console (5.5 × 1.4 × 1.6 ft) + 55" TV (4.2 × 2.4 ft)
+    function addTVWall(x, z, rotY = 0) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      addBox(5.5, 1.6, 1.4, 0, 0.8, 0, matWalnut, g);
+      addBox(4.2, 2.4, 0.16, 0, 3.6, -0.45, matScreen, g);
+      furnGroup.add(g);
+    }
+
+    // Real-scale Modular Kitchen Counter (2.0 ft deep × 2.8 ft high) + Fridge (2.2 × 2.2 × 5.6 ft)
+    function addKitchenUnit(x, z, length = 8.0, rotY = 0) {
+      const g = new THREE.Group();
+      g.position.set(x, 0.4, z);
+      g.rotation.y = rotY;
+      addBox(length, 2.8, 2.0, 0, 1.4, 0, matGranite, g);
+      addBox(1.8, 0.1, 1.3, -length * 0.25, 2.84, 0, matSteel, g);       // Sink
+      addBox(2.2, 0.1, 1.4,  length * 0.2,  2.84, 0, matDarkFrame, g);   // 4-burner hob
+      addBox(length, 2.2, 1.2, 0, 6.6, -0.4, matTeak, g);                // Upper cabinets
+      addBox(2.2, 5.6, 2.2, length / 2 + 1.3, 2.8, 0.1, matSteel, g);    // Fridge
+      furnGroup.add(g);
+    }
+
+    function addRug(x, z, w, d, color) {
+      addBox(w, 0.04, d, x, 0.42, z, new THREE.MeshStandardMaterial({ color, roughness: 0.95 }), furnGroup, false, true);
+    }
+
+    function addHouseSign(text, x, y, z, rotY, bgHex) {
+      const tex = makeCanvasTex(256, 76, (ctx, w, h) => {
+        ctx.fillStyle = bgHex;
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(4, 4, w - 8, h - 8);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 32px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, w / 2, h / 2);
+      });
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(5.0, 1.5, 0.2),
+        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 })
+      );
+      sign.position.set(x, y, z);
+      sign.rotation.y = rotY;
+      siteGroup.add(sign);
+    }
+
+    // 3D Architectural Dimension Label Helper
+    function addDimBadge(text, x, y, z) {
+      const tex = makeCanvasTex(256, 72, (ctx, w, h) => {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+        ctx.fillRect(4, 4, w - 8, h - 8);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(4, 4, w - 8, h - 8);
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 30px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, w / 2, h / 2);
+      });
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+      sp.position.set(x, y, z);
+      sp.scale.set(9.5, 2.7, 1);
+      dimsGroup.add(sp);
+    }
+
+    // Add exact map dimension badges around the plot
+    addDimBadge('22.5 ft (H4)', 11.25, 15.8, -2.5);
+    addDimBadge('19.5 ft (H3)', 32.25, 14.5, -2.5);
+    addDimBadge('51 ft', -4.2, 13.5, 25.5);
+    addDimBadge('26 ft', -4.2, 13.5, 64);
+    addDimBadge('40 ft (H2)', 20, 13.8, 79.5);
+    addDimBadge('30 × 6.5 ft', -4.2, 6.5, 92);
+    addDimBadge('39 ft (H1)', 83.5, 14.5, 19.5);
+    addDimBadge('23 ft', 107.2, 13.5, 33.5);
+    addDimBadge('BADA RASTA', 66.5, 5.5, 94);
+
+    // =========================================================================
+    // 8. HOUSE 1 — BROTHER 1 (39 × 23 ft = 897 sq ft | x: 64..103, z: 22..45)
+    //    Properly Partitioned 2BHK Modern Minimalist Terracotta Villa
+    // =========================================================================
+    const h1Floor = new THREE.MeshStandardMaterial({ map: texWarmTile, roughness: 0.4 });
+    addSlab(64, 22, 103, 45, h1Floor, 0.4);
+
+    // Exterior walls
+    buildWall(64, 22, 103, 22, EXT_T, matH1Ext, [{ offset: 15, width: 5, type: 'window' }, { offset: 28, width: 5, type: 'window' }], siteGroup);
+    buildWall(103, 22, 103, 45, EXT_T, matH1Ext, [{ offset: 4, width: 5, type: 'window' }, { offset: 14, width: 5, type: 'window' }], siteGroup);
+    buildWall(64, 45, 103, 45, EXT_T, matH1Ext, [
+      { offset: 3.5, width: 4.5, type: 'door', glass: true, swing: 1.2 },
+      { offset: 15, width: 5, type: 'window' },
+      { offset: 28, width: 5, type: 'window' }
+    ], siteGroup);
+    buildWall(64, 22, 64, 34, EXT_T, matH1Ext, [], siteGroup); // Solid dividing wall with House 3
+    buildWall(64, 34, 64, 45, EXT_T, matH1Ext, [{ offset: 3.0, width: 4.5, type: 'door', glass: true, swing: -1.2 }], siteGroup);
+
+    // Interior Partitions for House 1 (Real 2BHK!)
+    // 10 ft wooden louver screen at x=74, z=22..32 (matching map dashed line!)
+    for (let sz = 22.8; sz <= 31.6; sz += 1.0) {
+      addBox(0.28, WALL_H - 0.4, 0.22, 74, (WALL_H - 0.4) / 2, sz, matH1Accent, siteGroup);
+    }
+    colliders.push({ minX: 73.7, maxX: 74.3, minZ: 22, maxZ: 32 });
+    // Bedroom wall at x=87, z=22..45 (with 2 doors into Master Bed & Bed 2!)
+    buildWall(87, 22, 87, 45, INT_T, matH1Int, [
+      { offset: 6.5, width: 3.4, type: 'door', swing: 1.2 },
+      { offset: 13.5, width: 3.4, type: 'door', swing: -1.2 }
+    ], siteGroup);
+    // Dividing wall between Bedroom 1 (North) & Bedroom 2 (South) at z=33.5, x=87..103
+    buildWall(87, 33.5, 103, 33.5, INT_T, matH1Int, [], siteGroup);
+
+    // House 1 Roof: Sleek Flat Modern Terracotta-Accent Slab
+    addBox(39, 0.3, 23, 83.5, WALL_H - 0.15, 33.5, matCeiling, roofGroup, false, false);
+    addBox(41.2, 0.85, 25.2, 83.5, WALL_H + 0.42, 33.5, matH1Accent, roofGroup);
+    addBox(38.2, 1.15, 22.2, 83.5, WALL_H + 1.2, 33.5, matH1Ext, roofGroup);
+    addHouseSign('HOUSE 1', 63.4, 8.9, 39.5, -Math.PI / 2, '#b8523d');
+
+    // House 1 Real-Scale Interiors (1:1 Feet!)
+    addKitchenUnit(68.2, 23.4, 6.2, 0);                        // Kitchen (NW foyer)
+    addRug(78.5, 38.5, 8.5, 7.0, 0xfecdd3);
+    addSofa(78.5, 42.2, 6.5, Math.PI, 0x7c2d12);               // 6.5 ft 3-seater
+    addSofa(74.2, 37.8, 4.8, Math.PI / 2, 0x9a3412);           // 4.8 ft 2-seater
+    addCoffeeTable(78.5, 38.2, 0);                             // 3.5 × 2 ft table
+    addTVWall(85.8, 38.5, -Math.PI / 2);                       // 55" TV console
+    addDiningSet(79.5, 27.5, 0);                               // 5.5 × 3.2 ft dining
+    // Master Bedroom (87..103, 22..33.5 = 16 × 11.5 ft)
+    addDoubleBed(96.5, 27.5, -Math.PI / 2, 0x9f1239);          // Exact 6 × 6.5 ft bed!
+    addWardrobe(91.5, 23.4, 0, 5.5);                           // 5.5 × 2 ft wardrobe
+    // Bedroom 2 (87..103, 33.5..45 = 16 × 11.5 ft)
+    addDoubleBed(96.5, 39.2, -Math.PI / 2, 0xbe123c);          // Exact 6 × 6.5 ft bed!
+    addWardrobe(91.5, 43.6, Math.PI, 5.5);
+    addCeilingFan(78.5, 36.5);
+    addCeilingFan(95.0, 27.5);
+    addCeilingFan(95.0, 39.2);
+    addWarmLight(78.5, 9.2, 34, 0xffebd6, 0.7, 36);
+    addWarmLight(95, 9.2, 28, 0xffebd6, 0.55, 26);
+    addWarmLight(95, 9.2, 39, 0xffebd6, 0.55, 26);
+
+    // =========================================================================
+    // 9. HOUSE 2 — BROTHER 2 (UPDATED: 40 × 26 ft = 1,040 sq ft | x: 0..40, z: 51..77)
+    //    Side bathroom block REMOVED! Properly Partitioned 2BHK Courtyard Home
+    // =========================================================================
+    const h2Floor = new THREE.MeshStandardMaterial({ map: texWood, roughness: 0.58 });
+    addSlab(0, 51, 40, 77, h2Floor, 0.4);
+
+    // Exterior walls (40 ft × 26 ft!)
+    buildWall(0, 51, 0, 77, EXT_T, matH2Ext, [{ offset: 4.5, width: 5, type: 'window' }, { offset: 15.5, width: 5, type: 'window' }], siteGroup);
+    buildWall(0, 51, 22.5, 51, EXT_T, matH2Ext, [], siteGroup); // Solid wall with House 4
+    // Courtyard-facing North wall (x=22.5..40) — Main Entrance + Living Window!
+    buildWall(22.5, 51, 40, 51, EXT_T, matH2Ext, [
+      { offset: 2.0, width: 5.5, type: 'door', glass: true, swing: 1.2 },
+      { offset: 10.5, width: 5.0, type: 'window' }
+    ], siteGroup);
+    // East wall at x=40, z=51..77 (cleanly facing Courtyard & Bada Rasta side!)
+    buildWall(40, 51, 40, 77, EXT_T, matH2Ext, [
+      { offset: 4, width: 5.5, type: 'window' },
+      { offset: 16, width: 5.5, type: 'window' }
+    ], siteGroup);
+    // South wall at z=77, x=0..40 (Side door onto Chota Patla Rasta at x=1.2..5.2!)
+    buildWall(0, 77, 40, 77, EXT_T, matH2Ext, [
+      { offset: 1.2, width: 4.0, type: 'door', swing: 1.2 },
+      { offset: 12, width: 5, type: 'window' },
+      { offset: 26, width: 5, type: 'window' }
+    ], siteGroup);
+
+    // Interior Partitions for House 2 (40 × 26 ft → 2 Bedrooms + Living + Dining + Modular Kitchen + Entry Lobby!)
+    // Vertical wall separating West Bedroom Wing (x=0..16) from East Living/Kitchen Wing (x=16..40)
+    buildWall(16, 51, 16, 65, INT_T, matH2Int, [{ offset: 8.5, width: 3.4, type: 'door', swing: 1.2 }], siteGroup);
+    // Horizontal wall separating North Master Bed (z=51..64) from South Entry Foyer (x=0..7) & Bed 2 (x=7..22)
+    buildWall(0, 64, 16, 64, INT_T, matH2Int, [], siteGroup);
+    // Entry Foyer wall from Chota Patla Rasta (x=7, z=64..77, open north into Living Hall!)
+    buildWall(7, 64, 7, 77, INT_T, matH2Int, [{ offset: 1.5, width: 3.4, type: 'door', swing: -1.2 }], siteGroup);
+    // Bedroom 2 (x=7..23, z=64..77 = 16 × 13 ft)
+    buildWall(7, 64, 23, 64, INT_T, matH2Int, [{ offset: 11.5, width: 3.4, type: 'door', swing: 1.2 }], siteGroup);
+    buildWall(23, 64, 23, 77, INT_T, matH2Int, [], siteGroup);
+    // Open Kitchen Archway partition (x=28..40, z=65..77 = 12 × 12 ft)
+    buildWall(28, 65, 28, 77, INT_T, matH2Int, [{ offset: 1.5, width: 5.5, type: 'arch', leaf: false }], siteGroup);
+
+    // House 2 Roof: Contemporary Stepped Sage Parapet Roof (40 × 26 ft!)
+    addBox(40, 0.3, 26, 20, WALL_H - 0.15, 64, matCeiling, roofGroup, false, false);
+    addBox(41.8, 0.85, 27.6, 20, WALL_H + 0.42, 64, new THREE.MeshStandardMaterial({ map: texSlateRoof, roughness: 0.7 }), roofGroup);
+    addBox(42.2, 0.65, 0.55, 20, WALL_H + 1.05, 50.5, matH2Accent, roofGroup);
+    addBox(42.2, 0.65, 0.55, 20, WALL_H + 1.05, 77.5, matH2Accent, roofGroup);
+    addHouseSign('HOUSE 2', 30, 8.9, 50.4, 0, '#1e5245');
+
+    // House 2 Real-Scale Interiors (1:1 Feet!)
+    // Living & Dining Hall (x=16..40, z=51..64 = 24 × 13 ft)
+    addRug(24, 57.5, 8.5, 7.0, 0xbbf7d0);
+    addSofa(24, 61.2, 6.5, Math.PI, 0x065f46);
+    addSofa(19.5, 57.2, 4.8, Math.PI / 2, 0x334155);
+    addCoffeeTable(24, 57.5, 0);
+    addDiningSet(34.2, 57.5, 0);
+    // Modular Kitchen (x=28..40, z=65..77 = 12 × 12 ft)
+    addKitchenUnit(34.2, 75.6, 7.5, Math.PI);
+    // Master Bedroom (x=0..16, z=51..64 = 16 × 13 ft)
+    addDoubleBed(5.8, 57.5, Math.PI / 2, 0x047857);            // Exact 6 × 6.5 ft bed!
+    addWardrobe(11.5, 52.4, 0, 5.5);
+    addStudyDesk(11.5, 62.2, Math.PI);
+    // Bedroom 2 (x=7..23, z=64..77 = 16 × 13 ft)
+    addDoubleBed(15, 72.2, Math.PI, 0x0f766e);                 // Exact 6 × 6.5 ft bed!
+    addWardrobe(8.4, 70.5, Math.PI / 2, 5.5);
+    addCeilingFan(24, 57.5);
+    addCeilingFan(8.5, 57.5);
+    addCeilingFan(15, 70.5);
+    addWarmLight(26, 9.2, 58, 0xfff3db, 0.72, 38);
+    addWarmLight(9, 9.2, 57.5, 0xfff3db, 0.55, 26);
+    addWarmLight(15, 9.2, 70.5, 0xfff3db, 0.55, 26);
+    addWarmLight(34, 9.2, 71, 0xffffff, 0.6, 24);
+
+    // =========================================================================
+    // 10. HOUSE 3 — BROTHER 3 (927 sq ft | 22.5..42, 0..34 + 42..64, 22..34)
+    //     Properly Partitioned 2BHK L-Shaped Urban Slate-Blue Bungalow
+    // =========================================================================
+    const h3Floor = new THREE.MeshStandardMaterial({ map: texMarble, roughness: 0.28 });
+    addSlab(22.5, 0, 42, 34, h3Floor, 0.4);
+    addSlab(42, 22, 64, 34, h3Floor, 0.4);
+
+    // Exterior walls
+    buildWall(22.5, 0, 42, 0, EXT_T, matH3Ext, [{ offset: 6, width: 6, type: 'window' }], siteGroup);
+    buildWall(22.5, 0, 22.5, 34, EXT_T, matH3Ext, [], siteGroup); // Solid wall with House 4
+    buildWall(42, 0, 42, 22, EXT_T, matH3Ext, [{ offset: 4, width: 5, type: 'window' }, { offset: 13, width: 5, type: 'window' }], siteGroup);
+    buildWall(42, 22, 64, 22, EXT_T, matH3Ext, [{ offset: 5, width: 6, type: 'window' }, { offset: 14, width: 5, type: 'window' }], siteGroup);
+    buildWall(22.5, 34, 64, 34, EXT_T, matH3Ext, [
+      { offset: 6.0, width: 5.5, type: 'door', glass: true, swing: 1.2 },
+      { offset: 25, width: 6.5, type: 'window' }
+    ], siteGroup);
+
+    // Dashed partition at x=42, z=22..34 (modern slate columns + overhead beam)
+    addBox(0.65, 1.2, 12, 42, WALL_H - 0.6, 28, matH3Accent, siteGroup);
+    addBox(0.75, WALL_H, 0.75, 42, WALL_H / 2, 22.8, matH3Accent, siteGroup);
+    addBox(0.75, WALL_H, 0.75, 42, WALL_H / 2, 33.2, matH3Accent, siteGroup);
+
+    // Interior Partitions for House 3 (2 Real Bedrooms + Living Hall + East Wing Dining & Kitchen!)
+    // Master Bedroom (22.5..42, 0..11.5 = 19.5 × 11.5 ft)
+    buildWall(22.5, 11.5, 42, 11.5, INT_T, matH3Int, [{ offset: 14.5, width: 3.4, type: 'door', swing: -1.2 }], siteGroup);
+    // Bedroom 2 (22.5..36.5, 11.5..22.5 = 14 × 11 ft) with a 5.5 ft hallway along x=36.5..42
+    buildWall(22.5, 22.5, 36.5, 22.5, INT_T, matH3Int, [], siteGroup);
+    buildWall(36.5, 11.5, 36.5, 22.5, INT_T, matH3Int, [{ offset: 5.5, width: 3.4, type: 'door', swing: 1.2 }], siteGroup);
+
+    // House 3 Roof: Modern White & Slate-Blue Tiered Roof
+    addBox(19.5, 0.3, 34, 32.25, WALL_H - 0.15, 17, matCeiling, roofGroup, false, false);
+    addBox(22, 0.3, 12, 53, WALL_H - 0.15, 28, matCeiling, roofGroup, false, false);
+    addBox(21.0, 0.85, 35.4, 32.25, WALL_H + 0.42, 17, matH3Accent, roofGroup);
+    addBox(23.0, 0.85, 13.4, 53, WALL_H + 0.42, 28, matH3Accent, roofGroup);
+    addBox(15.5, 1.4, 24, 32.25, WALL_H + 1.45, 15, matH3Ext, roofGroup);
+    addHouseSign('HOUSE 3', 31.2, 8.9, 34.6, 0, '#2c4c70');
+
+    // House 3 Real-Scale Interiors (1:1 Feet!)
+    // Living Hall (22.5..42, 22.5..34 = 19.5 × 11.5 ft)
+    addRug(30.5, 28.2, 8.5, 6.5, 0xbfdbfe);
+    addSofa(30.5, 24.4, 6.5, 0, 0x1e3a5f);
+    addCoffeeTable(30.5, 28.0, 0);
+    addTVWall(23.8, 28.2, Math.PI / 2);
+    // East Wing Dining & Kitchen (42..64, 22..34 = 22 × 12 ft)
+    addDiningSet(48.5, 28.0, 0);
+    addKitchenUnit(58.2, 23.4, 6.5, 0);
+    // Master Bedroom (22.5..42, 0..11.5)
+    addDoubleBed(28.5, 5.8, Math.PI / 2, 0x1d4ed8);            // Exact 6 × 6.5 ft bed!
+    addWardrobe(37.5, 1.4, 0, 5.5);
+    // Bedroom 2 (22.5..36.5, 11.5..22.5)
+    addDoubleBed(27.5, 17.0, Math.PI / 2, 0x2563eb);           // Exact 6 × 6.5 ft bed!
+    addStudyDesk(33.5, 20.8, Math.PI);
+    addCeilingFan(31.5, 28.2);
+    addCeilingFan(52, 28);
+    addCeilingFan(32, 5.8);
+    addWarmLight(31.5, 9.2, 28, 0xfff4e0, 0.7, 34);
+    addWarmLight(53, 9.2, 28, 0xffe8c2, 0.65, 32);
+    addWarmLight(31, 9.2, 6, 0xfff4e0, 0.55, 28);
+
+    // =========================================================================
+    // 11. HOUSE 4 — BROTHER 4 (22.5 × 51 ft = 1,147 sq ft | x: 0..22.5, z: 0..51)
+    //     Properly Partitioned 2BHK + Dining Sandstone Villa with Pitched Roof
+    // =========================================================================
+    const h4Floor = new THREE.MeshStandardMaterial({ map: texWood, color: 0xf5e9da, roughness: 0.55 });
+    addSlab(0, 0, 22.5, 51, h4Floor, 0.4);
+
+    // Exterior walls
+    buildWall(0, 0, 22.5, 0, EXT_T, matH4Ext, [{ offset: 4.5, width: 5, type: 'window' }, { offset: 13.5, width: 5, type: 'window' }], siteGroup);
+    buildWall(0, 0, 0, 51, EXT_T, matH4Ext, [
+      { offset: 4, width: 5, type: 'window' },
+      { offset: 15, width: 5, type: 'window' },
+      { offset: 26, width: 5, type: 'window' },
+      { offset: 40, width: 5.5, type: 'window' }
+    ], siteGroup);
+    buildWall(22.5, 34, 22.5, 51, EXT_T, matH4Ext, [
+      { offset: 3.5, width: 5.0, type: 'door', glass: true, swing: 1.2 },
+      { offset: 11, width: 4.0, type: 'window' }
+    ], siteGroup);
+
+    // Interior Partitions for House 4 (22.5 × 51 ft → Front Living + Mid Dining/Kitchen + Bed 2 + Rear Master Suite!)
+    // Rear Master Bedroom (x=0..22.5, z=0..12 = 22.5 × 12 ft)
+    buildWall(0, 12, 22.5, 12, INT_T, matH4Int, [{ offset: 17.2, width: 3.4, type: 'door', swing: -1.2 }], siteGroup);
+    // Bedroom 2 (x=0..16.5, z=12..23.5 = 16.5 × 11.5 ft) with 6 ft hallway along East wall x=16.5..22.5
+    buildWall(0, 23.5, 16.5, 23.5, INT_T, matH4Int, [], siteGroup);
+    buildWall(16.5, 12, 16.5, 23.5, INT_T, matH4Int, [{ offset: 6.5, width: 3.4, type: 'door', swing: 1.2 }], siteGroup);
+    // Half-partition separating Kitchen/Dining (z=23.5..35) from Front Living Room (z=35..51)
+    buildWall(0, 35, 10, 35, INT_T, matH4Int, [], siteGroup);
+
+    // House 4 Roof: Pitched Terracotta-Tile Gable Roof
+    addBox(22.5, 0.3, 51, 11.25, WALL_H - 0.15, 25.5, matCeiling, roofGroup, false, false);
+    const matTerraRoof = new THREE.MeshStandardMaterial({ map: texRoofTile, roughness: 0.72 });
+    const slopeGeo = new THREE.BoxGeometry(13.2, 0.65, 52.6);
+    const leftSlope = new THREE.Mesh(slopeGeo, matTerraRoof);
+    leftSlope.position.set(5.4, WALL_H + 2.05, 25.5);
+    leftSlope.rotation.z = 0.34;
+    leftSlope.castShadow = true;
+    roofGroup.add(leftSlope);
+
+    const rightSlope = new THREE.Mesh(slopeGeo, matTerraRoof);
+    rightSlope.position.set(17.1, WALL_H + 2.05, 25.5);
+    rightSlope.rotation.z = -0.34;
+    rightSlope.castShadow = true;
+    roofGroup.add(rightSlope);
+
+    addBox(1.0, 0.8, 52.8, 11.25, WALL_H + 4.1, 25.5, matH4Accent, roofGroup);
+    const gableShape = new THREE.Shape();
+    gableShape.moveTo(-11.25, 0);
+    gableShape.lineTo(11.25, 0);
+    gableShape.lineTo(0, 4.0);
+    gableShape.closePath();
+    const gableGeo = new THREE.ExtrudeGeometry(gableShape, { depth: 0.75, bevelEnabled: false });
+    const northGable = new THREE.Mesh(gableGeo, matH4Ext);
+    northGable.position.set(11.25, WALL_H, -0.38);
+    roofGroup.add(northGable);
+    const southGable = new THREE.Mesh(gableGeo, matH4Ext);
+    southGable.position.set(11.25, WALL_H, 50.62);
+    roofGroup.add(southGable);
+    addHouseSign('HOUSE 4', 23.1, 8.9, 41.5, Math.PI / 2, '#6e472b');
+
+    // House 4 Real-Scale Interiors (1:1 Feet!)
+    // Front Living Room (x=0..22.5, z=35..51 = 22.5 × 16 ft)
+    addRug(10.5, 43, 9.0, 7.5, 0xd6c7b2);
+    addSofa(10.5, 48.2, 6.5, Math.PI, 0x57534e);
+    addSofa(16.2, 44.0, 4.8, -Math.PI / 2, 0x78716c);
+    addCoffeeTable(10.5, 43.2, 0);
+    addTVWall(1.4, 43.0, Math.PI / 2);
+    // Mid Dining & Kitchen (x=0..22.5, z=23.5..35 = 22.5 × 11.5 ft)
+    addKitchenUnit(1.8, 28.5, 7.2, Math.PI / 2);
+    addDiningSet(14.5, 29.2, 0);
+    // Bedroom 2 (x=0..16.5, z=12..23.5 = 16.5 × 11.5 ft)
+    addDoubleBed(5.8, 17.8, Math.PI / 2, 0xb45309);            // Exact 6 × 6.5 ft bed!
+    addWardrobe(12.2, 13.4, 0, 5.5);
+    // Master Bedroom (x=0..22.5, z=0..12 = 22.5 × 12 ft)
+    addDoubleBed(11.2, 4.8, 0, 0x92400e);                      // Exact 6 × 6.5 ft bed!
+    addWardrobe(1.8, 6.0, Math.PI / 2, 6.0);
+    addStudyDesk(19.0, 4.5, -Math.PI / 2);
+    addCeilingFan(11.2, 43);
+    addCeilingFan(14.5, 29.2);
+    addCeilingFan(11.2, 6.0);
+    addWarmLight(11.2, 9.2, 43, 0xfff0d4, 0.7, 36);
+    addWarmLight(12, 9.2, 29, 0xfff0d4, 0.6, 30);
+    addWarmLight(11.2, 9.2, 6, 0xfff0d4, 0.6, 30);
+
+    // =========================================================================
+    // 12. NAVIGATION ENGINE (Aerial Orbit + Scroll-to-Enter + First-Person Walk)
+    // =========================================================================
+    let navMode = 'orbit';
+    let roofVisible = true;
+    let dimsVisible = true;
+    let mapVisible = true;
+
+    const orbit = {
+      target: ROOM_PRESETS.aerial.target.clone(),
+      radius: ROOM_PRESETS.aerial.radius,
+      theta: ROOM_PRESETS.aerial.theta,
+      phi: ROOM_PRESETS.aerial.phi
+    };
+
+    const walk = {
+      pos: new THREE.Vector3(50, EYE_H, 54),
+      yaw: 0.25,
+      pitch: 0.02,
+      bobPhase: 0
+    };
+
+    let transition = null;
+    function startTransition(targetMode, opts) {
+      const startPos = camera.position.clone();
+      const startQuat = camera.quaternion.clone();
+      let endPos, endQuat;
+
+      if (targetMode === 'walk') {
+        navMode = 'walk';
+        walk.pos.copy(opts.pos);
+        walk.yaw = opts.yaw;
+        walk.pitch = opts.pitch;
+        endPos = opts.pos.clone();
+        const euler = new THREE.Euler(opts.pitch, opts.yaw, 0, 'YXZ');
+        endQuat = new THREE.Quaternion().setFromEuler(euler);
+        if (!roofVisible) setRoofVisible(true);
+      } else {
+        navMode = 'orbit';
+        orbit.target.copy(opts.target);
+        orbit.radius = opts.radius;
+        orbit.theta = opts.theta;
+        orbit.phi = opts.phi;
+        endPos = computeOrbitPos();
+        const dummy = camera.clone();
+        dummy.position.copy(endPos);
+        dummy.lookAt(orbit.target);
+        endQuat = dummy.quaternion.clone();
+      }
+      transition = { t: 0, duration: 0.76, startPos, endPos, startQuat, endQuat };
+      updateModeUI();
+    }
+
+    function computeOrbitPos() {
+      const sinPhi = Math.sin(orbit.phi);
+      return new THREE.Vector3(
+        orbit.target.x + orbit.radius * sinPhi * Math.sin(orbit.theta),
+        orbit.target.y + orbit.radius * Math.cos(orbit.phi),
+        orbit.target.z + orbit.radius * sinPhi * Math.cos(orbit.theta)
+      );
+    }
+
+    function setRoofVisible(val) {
+      roofVisible = val;
+      roofGroup.visible = roofVisible;
+      document.getElementById('roof-label').textContent = roofVisible ? 'Roof: On' : 'Roof: Cutaway';
+    }
+
+    function updateModeUI() {
+      const isWalk = navMode === 'walk';
+      document.getElementById('mode-btn-text').textContent = isWalk ? 'Exit to Aerial' : 'Enter Inside';
+      document.getElementById('walk-pad').classList.toggle('hidden', !isWalk);
+      document.getElementById('walk-pad').classList.toggle('flex', isWalk);
+      document.getElementById('controls-hint').innerHTML = isWalk
+        ? '<span class="text-emerald-300 font-semibold">Scroll / WASD</span> to walk • Drag to look 360°'
+        : 'Drag to rotate • <span class="text-emerald-300 font-semibold">Scroll In to Enter Inside</span> • Right-drag to pan';
+      if (isWalk) hideScrollBanner();
+    }
+
+    const scrollBanner = document.getElementById('scroll-enter-banner');
+    const scrollBar = document.getElementById('scroll-enter-bar');
+    const scrollText = document.getElementById('scroll-enter-text');
+    let bannerTimer = null;
+
+    function showScrollBanner(progress) {
+      scrollBanner.style.opacity = '1';
+      scrollBar.style.width = `${Math.min(100, Math.round(progress * 100))}%`;
+      scrollText.textContent = progress > 0.75 ? 'Entering inside the plot...' : 'Keep scrolling in to walk inside...';
+      clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(hideScrollBanner, 1800);
+    }
+    function hideScrollBanner() { scrollBanner.style.opacity = '0'; }
+
+    function collides(x, z, r = 0.95) {
+      for (let i = 0; i < colliders.length; i++) {
+        const c = colliders[i];
+        if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) return true;
+      }
+      if (x < -4 || x > 107 || z < -4 || z > 112) return true;
+      return false;
+    }
+
+    function moveWalker(forwardAmt, strafeAmt) {
+      const sinY = Math.sin(walk.yaw), cosY = Math.cos(walk.yaw);
+      const dx = (-sinY * forwardAmt) + (cosY * strafeAmt);
+      const dz = (-cosY * forwardAmt) + (-sinY * strafeAmt);
+      let moved = false;
+      if (!collides(walk.pos.x + dx, walk.pos.z)) { walk.pos.x += dx; moved = true; }
+      if (!collides(walk.pos.x, walk.pos.z + dz)) { walk.pos.z += dz; moved = true; }
+      if (moved) walk.bobPhase += Math.hypot(dx, dz) * 0.65;
+    }
+
+    function detectCurrentRoom(x, z) {
+      if (navMode === 'orbit') return { id: 'aerial', name: 'Aerial View • 4 Plots & 2 Raste', area: '1:1 Feet Scale' };
+      if (x >= 0 && x <= 22.5 && z >= 0 && z <= 51) return { id: 'plot4', name: 'House 4 — Brother 4 (Sandstone Villa)', area: '1,147 sq ft' };
+      if ((x >= 22.5 && x <= 42 && z >= 0 && z <= 34) || (x >= 42 && x <= 64 && z >= 22 && z <= 34))
+        return { id: 'plot3', name: 'House 3 — Brother 3 (L-Shaped Home)', area: '927 sq ft' };
+      if (x >= 64 && x <= 103 && z >= 22 && z <= 45) return { id: 'plot1', name: 'House 1 — Brother 1 (Terracotta Villa)', area: '897 sq ft' };
+      if (x >= 0 && x <= 40 && z >= 51 && z <= 77)
+        return { id: 'plot2', name: 'House 2 — Brother 2 (40 × 26 ft)', area: '1,040 sq ft' };
+      if (x >= 0 && x <= 6.5 && z >= 77 && z <= 107) return { id: 'chotaRasta', name: 'Chota Patla Rasta (30 × 6.5 ft)', area: 'Side Narrow Lane' };
+      if ((x >= 42 && x <= 58.5 && z >= 68 && z <= 88) || (x >= 58.5 && x <= 75 && z >= 68 && z <= 107))
+        return { id: 'badaRasta', name: 'Bada Rasta (Main Wide Road)', area: 'Main Entry Road' };
+      if (x >= 22.5 && x <= 75 && z >= 34 && z <= 68)
+        return { id: 'courtyard', name: 'Central Open Courtyard', area: 'Shared Green Area' };
+      return { id: 'badaRasta', name: 'Plot Entry Boundary', area: '1:1 Feet Scale' };
+    }
+
+    // =========================================================================
+    // 13. POINTER, SCROLL & KEYBOARD CONTROLS
+    // =========================================================================
+    let isDragging = false, dragButton = 0, lastX = 0, lastY = 0;
+    const keys = {};
+    const padState = { forward: false, backward: false, left: false, right: false };
+
+    container.addEventListener('contextmenu', e => e.preventDefault());
+
+    container.addEventListener('pointerdown', e => {
+      isDragging = true; dragButton = e.button; lastX = e.clientX; lastY = e.clientY;
+      transition = null;
+      container.setPointerCapture(e.pointerId);
+    });
+
+    container.addEventListener('pointermove', e => {
+      if (!isDragging) return;
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+
+      if (navMode === 'orbit') {
+        if (dragButton === 2 || e.shiftKey) {
+          const panSpeed = orbit.radius * 0.0014;
+          const right = new THREE.Vector3(Math.cos(orbit.theta), 0, -Math.sin(orbit.theta));
+          const fwd = new THREE.Vector3(-Math.sin(orbit.theta), 0, -Math.cos(orbit.theta));
+          orbit.target.addScaledVector(right, -dx * panSpeed);
+          orbit.target.addScaledVector(fwd, dy * panSpeed);
+          orbit.target.x = Math.max(0, Math.min(103, orbit.target.x));
+          orbit.target.z = Math.max(0, Math.min(107, orbit.target.z));
+        } else {
+          orbit.theta -= dx * 0.0065;
+          orbit.phi = Math.max(0.18, Math.min(Math.PI / 2 - 0.06, orbit.phi - dy * 0.0065));
+        }
+      } else {
+        walk.yaw -= dx * 0.0042;
+        walk.pitch = Math.max(-1.15, Math.min(1.15, walk.pitch - dy * 0.0038));
+      }
+    });
+
+    container.addEventListener('pointerup', e => {
+      isDragging = false;
+      try { container.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    container.addEventListener('wheel', e => {
+      e.preventDefault();
+      transition = null;
+      const delta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 120);
+
+      if (navMode === 'orbit') {
+        orbit.radius = Math.max(20, Math.min(230, orbit.radius + delta * 0.14));
+        if (orbit.radius < 54) {
+          const prog = (54 - orbit.radius) / (54 - 24);
+          showScrollBanner(prog);
+          if (orbit.radius <= 24) {
+            const enterPos = new THREE.Vector3(
+              Math.max(26, Math.min(60, orbit.target.x)),
+              EYE_H,
+              Math.max(38, Math.min(62, orbit.target.z))
+            );
+            startTransition('walk', { pos: enterPos, yaw: orbit.theta, pitch: 0.0 });
+          }
+        }
+      } else {
+        moveWalker(-delta * 0.03, 0);
+      }
+    }, { passive: false });
+
+    let lastPinchDist = null;
+    container.addEventListener('touchmove', e => {
+      if (e.touches.length === 2) {
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        if (lastPinchDist !== null) {
+          const diff = lastPinchDist - dist;
+          if (navMode === 'orbit') {
+            orbit.radius = Math.max(20, Math.min(230, orbit.radius + diff * 0.35));
+            if (orbit.radius <= 24) startTransition('walk', ROOM_PRESETS.courtyard);
+          } else {
+            moveWalker(-diff * 0.08, 0);
+          }
+        }
+        lastPinchDist = dist;
+      }
+    }, { passive: true });
+    container.addEventListener('touchend', () => { lastPinchDist = null; });
+
+    window.addEventListener('keydown', e => { keys[e.code] = true; });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    // =========================================================================
+    // 14. UI HANDLERS & LIGHTING PRESETS
+    // =========================================================================
+    function selectRoom(roomKey) {
+      const preset = ROOM_PRESETS[roomKey];
+      if (!preset) return;
+      startTransition(preset.mode, preset);
+      highlightRoomBtn(roomKey);
+    }
+
+    function highlightRoomBtn(activeId) {
+      document.querySelectorAll('.room-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.room === activeId);
+      });
+    }
+
+    document.querySelectorAll('.room-btn').forEach(btn => {
+      btn.addEventListener('click', () => selectRoom(btn.dataset.room));
+    });
+
+    document.getElementById('btn-mode-toggle').addEventListener('click', () => {
+      selectRoom(navMode === 'orbit' ? 'courtyard' : 'aerial');
+    });
+
+    document.getElementById('btn-roof').addEventListener('click', () => setRoofVisible(!roofVisible));
+
+    document.getElementById('btn-dims').addEventListener('click', () => {
+      dimsVisible = !dimsVisible;
+      dimsGroup.visible = dimsVisible;
+      document.getElementById('dims-label').textContent = dimsVisible ? 'Dims: On' : 'Dims: Off';
+    });
+
+    document.getElementById('btn-map-toggle').addEventListener('click', () => {
+      mapVisible = !mapVisible;
+      document.getElementById('minimap-panel').classList.toggle('hidden', !mapVisible);
+    });
+
+    document.querySelectorAll('.walk-ctrl').forEach(btn => {
+      const dir = btn.dataset.move;
+      const start = e => { e.preventDefault(); padState[dir] = true; };
+      const stop = () => { padState[dir] = false; };
+      btn.addEventListener('pointerdown', start);
+      btn.addEventListener('pointerup', stop);
+      btn.addEventListener('pointerleave', stop);
+      btn.addEventListener('pointercancel', stop);
+    });
+
+    const TOD_CONFIG = {
+      morning: {
+        sky: 0xc2e2f7, fog: 0xd8ebf7, sunPos: [140, 75, 45], sunColor: 0xffe4b5, sunInt: 1.15,
+        hemiSky: 0xeaf6ff, hemiGround: 0x64748b, hemiInt: 0.68, interiorMul: 0.45, exposure: 1.05
+      },
+      noon: {
+        sky: 0xcce6f7, fog: 0xd8ebf7, sunPos: [105, 145, 95], sunColor: 0xfff8eb, sunInt: 1.32,
+        hemiSky: 0xeef7ff, hemiGround: 0x64748b, hemiInt: 0.78, interiorMul: 0.35, exposure: 1.06
+      },
+      sunset: {
+        sky: 0xe89774, fog: 0xe5a485, sunPos: [-115, 42, 75], sunColor: 0xff8c42, sunInt: 1.15,
+        hemiSky: 0xfdba74, hemiGround: 0x3b2f2f, hemiInt: 0.55, interiorMul: 1.15, exposure: 1.02
+      },
+      night: {
+        sky: 0x0b132b, fog: 0x0f172a, sunPos: [-80, 110, -70], sunColor: 0x93c5fd, sunInt: 0.25,
+        hemiSky: 0x1e293b, hemiGround: 0x0f172a, hemiInt: 0.38, interiorMul: 1.85, exposure: 0.98
+      }
+    };
+
+    function setTimeOfDay(tod) {
+      const c = TOD_CONFIG[tod];
+      if (!c) return;
+      scene.background.setHex(c.sky);
+      scene.fog.color.setHex(c.fog);
+      sunLight.position.set(...c.sunPos);
+      sunLight.color.setHex(c.sunColor);
+      sunLight.intensity = c.sunInt;
+      hemiLight.color.setHex(c.hemiSky);
+      hemiLight.groundColor.setHex(c.hemiGround);
+      hemiLight.intensity = c.hemiInt;
+      renderer.toneMappingExposure = c.exposure;
+      interiorLights.forEach(item => { item.light.intensity = item.baseIntensity * c.interiorMul; });
+
+      document.querySelectorAll('.tod-btn').forEach(btn => {
+        const active = btn.dataset.tod === tod;
+        btn.className = active
+          ? 'tod-btn px-2 py-1 rounded-lg text-[11px] bg-amber-400 text-slate-950 font-semibold transition'
+          : 'tod-btn px-2 py-1 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition';
+      });
+    }
+
+    document.querySelectorAll('.tod-btn').forEach(btn => {
+      btn.addEventListener('click', () => setTimeOfDay(btn.dataset.tod));
+    });
+
+    // =========================================================================
+    // 15. INTERACTIVE 2D PLOT MINIMAP (Updated: House 2 = 40×26, No Side Bathroom!)
+    // =========================================================================
+    const mmCanvas = document.getElementById('minimap-canvas');
+    const mmCtx = mmCanvas.getContext('2d');
+    const MM_SCALE = 1.92;
+    const MM_OX = 11, MM_OY = 12;
+
+    function toMM(x, z) { return [MM_OX + x * MM_SCALE, MM_OY + z * MM_SCALE]; }
+
+    function drawMinimap() {
+      const ctx = mmCtx;
+      ctx.clearRect(0, 0, mmCanvas.width, mmCanvas.height);
+
+      function rect(x1, z1, x2, z2, fill, stroke = '#0f2922') {
+        const [px, pz] = toMM(x1, z1);
+        ctx.fillStyle = fill;
+        ctx.fillRect(px, pz, (x2 - x1) * MM_SCALE, (z2 - z1) * MM_SCALE);
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(px, pz, (x2 - x1) * MM_SCALE, (z2 - z1) * MM_SCALE);
+      }
+
+      // Courtyard
+      rect(22.5, 34, 64, 51, '#78b83d', '#5c942a');
+      rect(40, 51, 64, 68, '#78b83d', '#5c942a');
+      rect(64, 45, 75, 68, '#78b83d', '#5c942a');
+
+      // Bada Rasta
+      rect(42, 68, 58.5, 88, '#64748b', '#334155');
+      rect(58.5, 68, 75, 107, '#64748b', '#334155');
+
+      // Chota Patla Rasta
+      rect(0, 77, 6.5, 107, '#94a3b8', '#475569');
+
+      // 4 Brothers' Houses (House 2 now 40 ft wide, no side bathroom!)
+      rect(0, 0, 22.5, 51, '#fdf2e1');
+      rect(22.5, 0, 42, 34, '#dbeeff');
+      rect(42, 22, 64, 34, '#dbeeff');
+      rect(64, 22, 103, 45, '#fce1e4');
+      rect(0, 51, 40, 77, '#ddf7e3');
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 10px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      [
+        ['4', 11.2, 25], ['3', 32, 17], ['1', 83, 33.5], ['2 (40ft)', 20, 64]
+      ].forEach(([txt, lx, lz]) => {
+        const [px, pz] = toMM(lx, lz);
+        ctx.fillText(txt, px, pz);
+      });
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 8px Inter, sans-serif';
+      const [brx, brz] = toMM(66.5, 88);
+      ctx.fillText('BADA', brx, brz - 4);
+      ctx.fillText('RASTA', brx, brz + 5);
+
+      const cx = navMode === 'walk' ? walk.pos.x : orbit.target.x;
+      const cz = navMode === 'walk' ? walk.pos.z : orbit.target.z;
+      const [px, pz] = toMM(cx, cz);
+
+      if (navMode === 'walk') {
+        const dirAngle = -walk.yaw - Math.PI / 2;
+        ctx.save();
+        ctx.translate(px, pz);
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, 17, dirAngle - 0.45, dirAngle + 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.beginPath();
+      ctx.arc(px, pz, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#10b981';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+
+    mmCanvas.addEventListener('click', e => {
+      const r = mmCanvas.getBoundingClientRect();
+      const sx = (e.clientX - r.left) * (mmCanvas.width / r.width);
+      const sy = (e.clientY - r.top) * (mmCanvas.height / r.height);
+      const wx = (sx - MM_OX) / MM_SCALE;
+      const wz = (sy - MM_OY) / MM_SCALE;
+
+      if (wx >= 0 && wx <= 22.5 && wz >= 0 && wz <= 51) selectRoom('plot4');
+      else if ((wx >= 22.5 && wx <= 42 && wz >= 0 && wz <= 34) || (wx >= 42 && wx <= 64 && wz >= 22 && wz <= 34)) selectRoom('plot3');
+      else if (wx >= 64 && wx <= 103 && wz >= 22 && wz <= 45) selectRoom('plot1');
+      else if (wx >= 0 && wx <= 40 && wz >= 51 && wz <= 77) selectRoom('plot2');
+      else if (wx >= 0 && wx <= 6.5 && wz >= 77 && wz <= 107) selectRoom('chotaRasta');
+      else if ((wx >= 42 && wx <= 58.5 && wz >= 68 && wz <= 88) || (wx >= 58.5 && wx <= 75 && wz >= 68 && wz <= 107)) selectRoom('badaRasta');
+      else if (wx >= 22.5 && wx <= 75 && wz >= 34 && wz <= 68) selectRoom('courtyard');
+    });
+
+    // =========================================================================
+    // 16. ANIMATION LOOP & RESIZE
+    // =========================================================================
+    let lastTime = performance.now();
+    let lastRoomId = '';
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      ceilingFans.forEach(f => { f.rotation.y += dt * 3.6; });
+
+      if (transition) {
+        transition.t += dt / transition.duration;
+        const k = Math.min(1, transition.t);
+        const ease = 1 - Math.pow(1 - k, 3);
+        camera.position.lerpVectors(transition.startPos, transition.endPos, ease);
+        THREE.Quaternion.slerp(transition.startQuat, transition.endQuat, camera.quaternion, ease);
+        if (k >= 1) transition = null;
+      } else if (navMode === 'orbit') {
+        camera.position.copy(computeOrbitPos());
+        camera.lookAt(orbit.target);
+      } else {
+        const speed = 15.5 * dt;
+        let fwd = 0, str = 0;
+        if (keys['KeyW'] || keys['ArrowUp'] || padState.forward) fwd += speed;
+        if (keys['KeyS'] || keys['ArrowDown'] || padState.backward) fwd -= speed;
+        if (keys['KeyD'] || keys['ArrowRight'] || padState.right) str += speed;
+        if (keys['KeyA'] || keys['ArrowLeft'] || padState.left) str -= speed;
+        if (fwd !== 0 || str !== 0) moveWalker(fwd, str);
+
+        camera.position.set(walk.pos.x, EYE_H + Math.sin(walk.bobPhase) * 0.11, walk.pos.z);
+        camera.rotation.order = 'YXZ';
+        camera.rotation.y = walk.yaw;
+        camera.rotation.x = walk.pitch;
+        camera.rotation.z = 0;
+      }
+
+      const info = detectCurrentRoom(camera.position.x, camera.position.z);
+      if (info.id !== lastRoomId) {
+        lastRoomId = info.id;
+        document.getElementById('location-label').textContent = info.name;
+        document.getElementById('location-area').textContent = info.area;
+        highlightRoomBtn(info.id);
+      }
+      if (mapVisible) drawMinimap();
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    setTimeOfDay('noon');
+    updateModeUI();
+    requestAnimationFrame(animate);
+  })();
+  </script>
+</body>
+</html>
