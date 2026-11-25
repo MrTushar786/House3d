@@ -31,7 +31,7 @@ export function BottomDock({ mode, activeRoom, onToggleMode, onSelectRoom }: Pro
           </>
         ) : (
           <>
-            <span className="text-emerald-300 font-semibold">Scroll to zoom anywhere</span> • Drag to rotate • Right-drag / WASD to pan
+            <span className="text-emerald-300 font-semibold">Drag to move • Scroll to zoom</span> • Right-drag to rotate • WASD to pan
           </>
         )}
       </div>
