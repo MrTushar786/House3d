@@ -28,12 +28,13 @@ export default function App() {
 
       {mapVisible && <Minimap canvasRef={attachMinimap} onSelect={actions.selectRoom} />}
 
-      {state.mode === 'walk' && <WalkPad onDirection={actions.setWalkDirection} />}
+      {state.mode !== 'orbit' && <WalkPad onDirection={actions.setWalkDirection} />}
 
       <BottomDock
         mode={state.mode}
         activeRoom={state.activeRoom}
         onToggleMode={actions.toggleMode}
+        onPlay={actions.playCharacter}
         onSelectRoom={actions.selectRoom}
       />
     </>
