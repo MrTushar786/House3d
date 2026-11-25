@@ -82,7 +82,11 @@ export function useHouseEngine() {
     return {
       selectRoom,
       toggleMode() {
-        selectRoom(engineRef.current?.mode === 'walk' ? 'aerial' : 'courtyard');
+        selectRoom(engineRef.current?.mode === 'orbit' ? 'courtyard' : 'aerial');
+      },
+      /** Third-person game mode with the animated character. */
+      playCharacter() {
+        engineRef.current?.enterCharacterMode();
       },
       setRoofVisible(visible: boolean) {
         engineRef.current?.setRoofVisible(visible);

@@ -4,13 +4,16 @@ import {
   EYE_H,
   ROOM_PRESETS,
   TOD_CONFIG,
+  WALL_H,
   type NavMode,
   type RoomId,
   type RoomPreset,
   type TimeOfDay,
 } from './constants';
+import { Character, RUN_SPEED, WALK_SPEED } from './character';
 import { drawMinimap } from './minimap';
-import { describeLocation, type LocationInfo } from './regions';
+import { SkyDome } from './sky';
+import { describeLocation, regionAt, type LocationInfo } from './regions';
 import { buildWorld, type World } from './world';
 
 export type WalkDirection = 'forward' | 'backward' | 'left' | 'right';
@@ -20,6 +23,13 @@ export interface EngineCallbacks {
   onLocationChange: (info: LocationInfo) => void;
   onRoofChange: (visible: boolean) => void;
 }
+
+/** Character collision radius (shoulder half-width) in feet. */
+const CHARACTER_RADIUS = 0.8;
+/** Where the follow camera aims: roughly the character's upper chest. */
+const FOLLOW_TARGET_HEIGHT = 4.9;
+/** Where the character appears if the current spot isn't walkable. */
+const CHARACTER_SPAWN = { x: 50, z: 56 };
 
 export interface EngineOptions {
   /** View to show on startup, applied instantly (no camera fly-in). */
@@ -61,11 +71,13 @@ export class HouseEngine {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
-  private readonly sky = new THREE.Color(0xcce6f7);
   private readonly fog = new THREE.FogExp2(0xd8ebf7, 0.0017);
   private readonly hemiLight = new THREE.HemisphereLight(0xeef7ff, 0x64748b, 0.78);
   private readonly sunLight = new THREE.DirectionalLight(0xfff7e8, 1.32);
+  private readonly sky: SkyDome;
   private readonly world: World;
+  /** Every material with its authored envMapIntensity, scaled per time of day. */
+  private readonly envMaterials: { m: THREE.MeshStandardMaterial; base: number }[] = [];
 
   private navMode: NavMode = 'orbit';
   private roofVisible = true;
@@ -77,6 +89,24 @@ export class HouseEngine {
     phi: AERIAL_PRESET.phi,
   };
   private readonly walk = { pos: new THREE.Vector3(50, EYE_H, 54), yaw: 0.25, pitch: 0.02, bobPhase: 0 };
+
+  /** Third-person character and its follow camera (yaw/pitch around it, distance from it). */
+  private readonly character: Character;
+  private readonly charPos = new THREE.Vector3(CHARACTER_SPAWN.x, 0, CHARACTER_SPAWN.z);
+  private readonly follow = { yaw: 0, pitch: 0.32, dist: 13, curDist: 13 };
+  private readonly followTarget = new THREE.Vector3();
+  /** Click-to-move: where the character is walking to (null = no target). */
+  private moveTarget: THREE.Vector3 | null = null;
+  private moveRunning = false;
+  private stuckTime = 0;
+  private lastClickTime = 0;
+  /** Pointer-down position/time, to tell a click (move) from a drag (look around). */
+  private clickStart: { x: number; y: number; t: number } | null = null;
+  /** Pulsing ring on the ground at the click-to-move destination. */
+  private readonly moveMarker = new THREE.Mesh(
+    new THREE.RingGeometry(0.45, 0.7, 32),
+    new THREE.MeshBasicMaterial({ color: 0x34d399, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }),
+  );
 
   /** Active pointers (mouse / each touch finger), for drag and pinch. */
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -103,7 +133,6 @@ export class HouseEngine {
     options: EngineOptions = {},
   ) {
     const { scene, sunLight } = this;
-    scene.background = this.sky;
     scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.35, 1600);
@@ -114,25 +143,36 @@ export class HouseEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.06;
+    // Linear lighting with sRGB output: natural light falloff instead of flat, washed shading.
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(this.renderer.domElement);
+
+    this.sky = new SkyDome(this.renderer);
+    scene.add(this.sky.mesh);
 
     scene.add(this.hemiLight);
     sunLight.position.set(105, 145, 95);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.mapSize.set(4096, 4096);
     const cam = sunLight.shadow.camera;
     cam.near = 20;
     cam.far = 380;
-    cam.left = -110;
-    cam.right = 110;
-    cam.top = 110;
-    cam.bottom = -110;
-    sunLight.shadow.bias = -0.0005;
+    cam.left = -85;
+    cam.right = 85;
+    cam.top = 85;
+    cam.bottom = -85;
+    sunLight.shadow.bias = -0.0004;
+    sunLight.shadow.normalBias = 0.02;
     sunLight.target.position.set(50, 0, 52);
     scene.add(sunLight, sunLight.target);
 
     this.world = buildWorld(scene);
+    this.character = new Character();
+    scene.add(this.character.root);
+    this.moveMarker.rotation.x = -Math.PI / 2;
+    this.moveMarker.visible = false;
+    scene.add(this.moveMarker);
+    this.linearizeColors();
 
     this.bindInput();
     this.setTimeOfDay('noon');
@@ -152,6 +192,36 @@ export class HouseEngine {
     this.applyPreset(ROOM_PRESETS[id], false);
   }
 
+  /**
+   * Third-person game mode: puts the character where you're currently looking
+   * (or at the courtyard if that spot isn't walkable) with the camera behind it.
+   */
+  enterCharacterMode() {
+    if (this.navMode === 'character') return;
+    const from = this.navMode === 'walk' ? this.walk.pos : this.orbit.target;
+    const yaw = this.navMode === 'walk' ? this.walk.yaw : this.orbit.theta;
+    let { x, z } = from;
+    const offPlot = x < -5 || x > 108 || z < -5 || z > 112;
+    if (offPlot || this.collides(x, z, CHARACTER_RADIUS)) ({ x, z } = CHARACTER_SPAWN);
+    this.charPos.set(x, this.floorAt(x, z), z);
+    this.character.yaw = yaw;
+    this.character.root.position.copy(this.charPos);
+    this.character.root.rotation.y = yaw;
+    this.character.root.visible = true;
+    Object.assign(this.follow, { yaw, pitch: 0.32, dist: 13, curDist: 13 });
+    if (!this.roofVisible) this.setRoofVisible(true);
+
+    const startPos = this.camera.position.clone();
+    const startQuat = this.camera.quaternion.clone();
+    const end = new THREE.Object3D();
+    this.placeFollowCamera(1, end, true);
+    this.navMode = 'character';
+    this.transition = {
+      t: 0, duration: TRANSITION_SECONDS * 1.5, startPos, endPos: end.position.clone(), startQuat, endQuat: end.quaternion.clone(),
+    };
+    this.callbacks.onModeChange(this.navMode);
+  }
+
   setRoofVisible(visible: boolean) {
     this.roofVisible = visible;
     this.world.roofGroup.visible = visible;
@@ -164,15 +234,17 @@ export class HouseEngine {
 
   setTimeOfDay(tod: TimeOfDay) {
     const c = TOD_CONFIG[tod];
-    this.sky.setHex(c.sky);
-    this.fog.color.setHex(c.fog);
+    const lin = (hex: number, color: THREE.Color) => color.setHex(hex).convertSRGBToLinear();
+    this.scene.environment = this.sky.update(c.skyTop, c.skyHorizon, c.skyGround);
+    lin(c.skyHorizon, this.fog.color);
     this.sunLight.position.set(...c.sunPos);
-    this.sunLight.color.setHex(c.sunColor);
+    lin(c.sunColor, this.sunLight.color);
     this.sunLight.intensity = c.sunInt;
-    this.hemiLight.color.setHex(c.hemiSky);
-    this.hemiLight.groundColor.setHex(c.hemiGround);
+    lin(c.hemiSky, this.hemiLight.color);
+    lin(c.hemiGround, this.hemiLight.groundColor);
     this.hemiLight.intensity = c.hemiInt;
     this.renderer.toneMappingExposure = c.exposure;
+    for (const { m, base } of this.envMaterials) m.envMapIntensity = base * c.envInt;
     for (const item of this.world.interiorLights) item.light.intensity = item.baseIntensity * c.interiorMul;
   }
 
@@ -185,8 +257,32 @@ export class HouseEngine {
     this.minimapCtx = canvas?.getContext('2d') ?? null;
   }
 
+  /**
+   * Colours in the world are authored as sRGB hex; with sRGB output the
+   * renderer expects them in linear space, so convert each one exactly once.
+   * Also records every material's envMapIntensity for time-of-day scaling.
+   */
+  private linearizeColors() {
+    const seen = new Set<THREE.Material>();
+    this.scene.traverse((obj) => {
+      if (obj instanceof THREE.PointLight) obj.color.convertSRGBToLinear();
+      if (obj === this.sky.mesh) return;
+      const mat = (obj as THREE.Mesh).material;
+      if (!mat) return;
+      for (const m of Array.isArray(mat) ? mat : [mat]) {
+        if (seen.has(m)) continue;
+        seen.add(m);
+        const withColor = m as THREE.MeshStandardMaterial;
+        withColor.color?.convertSRGBToLinear();
+        withColor.emissive?.convertSRGBToLinear();
+        if (withColor.isMeshStandardMaterial) this.envMaterials.push({ m: withColor, base: withColor.envMapIntensity });
+      }
+    });
+  }
+
   dispose() {
     cancelAnimationFrame(this.rafId);
+    this.sky.dispose();
     for (const off of this.cleanups) off();
     this.cleanups.length = 0;
 
@@ -211,6 +307,19 @@ export class HouseEngine {
   // ---------------------------------------------------------------------------
 
   private applyPreset(preset: RoomPreset, instant: boolean) {
+    // While playing, room buttons / map clicks teleport the character instead.
+    if (this.navMode === 'character' && preset.mode === 'walk') {
+      const [x, , z] = preset.pos;
+      this.charPos.set(x, this.floorAt(x, z), z);
+      this.character.yaw = preset.yaw;
+      this.follow.yaw = preset.yaw;
+      this.follow.curDist = 1.5; // let the camera ease back out from close up
+      this.clearMoveTarget();
+      return;
+    }
+    this.character.root.visible = false;
+    this.clearMoveTarget();
+
     const startPos = this.camera.position.clone();
     const startQuat = this.camera.quaternion.clone();
     let endPos: THREE.Vector3;
@@ -274,11 +383,11 @@ export class HouseEngine {
   }
 
   /** Point on the ground plane (at the orbit target's height) under a screen position, or null above the horizon. */
-  private groundPointAt(clientX: number, clientY: number, out: THREE.Vector3): THREE.Vector3 | null {
+  private groundPointAt(clientX: number, clientY: number, out: THREE.Vector3, planeY = this.orbit.target.y): THREE.Vector3 | null {
     const rect = this.container.getBoundingClientRect();
     this.ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.ndc, this.camera);
-    this.groundPlane.constant = -this.orbit.target.y;
+    this.groundPlane.constant = -planeY;
     return this.raycaster.ray.intersectPlane(this.groundPlane, out);
   }
 
@@ -330,6 +439,113 @@ export class HouseEngine {
     return x < WALK_BOUNDS.minX || x > WALK_BOUNDS.maxX || z < WALK_BOUNDS.minZ || z > WALK_BOUNDS.maxZ;
   }
 
+  /** Top of the floor slab (house, road, lawn, lane) under a point; 0 on open ground. */
+  private floorAt(x: number, z: number) {
+    let top = 0;
+    for (const f of this.world.floors) {
+      if (x >= f.x1 && x <= f.x2 && z >= f.z1 && z <= f.z2 && f.top > top) top = f.top;
+    }
+    return top;
+  }
+
+  /** Moves the character relative to the camera's heading, sliding along walls. */
+  private updateCharacter(dt: number, fwd: number, str: number) {
+    const p = this.charPos;
+    const shift = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    let running = shift;
+    let mx = 0, mz = 0;
+    if (fwd !== 0 || str !== 0) {
+      // Keyboard / on-screen pad: relative to where the camera looks. Cancels click-to-move.
+      this.clearMoveTarget();
+      const sy = Math.sin(this.follow.yaw), cy = Math.cos(this.follow.yaw);
+      mx = -sy * fwd + cy * str;
+      mz = -cy * fwd - sy * str;
+    } else if (this.moveTarget) {
+      // Click-to-move: head straight for the clicked spot.
+      mx = this.moveTarget.x - p.x;
+      mz = this.moveTarget.z - p.z;
+      running = this.moveRunning || shift;
+      if (Math.hypot(mx, mz) < 0.4) {
+        this.clearMoveTarget();
+        mx = mz = 0;
+      }
+    }
+
+    if (mx !== 0 || mz !== 0) {
+      const len = Math.hypot(mx, mz);
+      mx /= len;
+      mz /= len;
+      const step = (running ? RUN_SPEED : WALK_SPEED) * dt;
+      const before = p.x + p.z;
+      if (!this.collides(p.x + mx * step, p.z, CHARACTER_RADIUS)) p.x += mx * step;
+      if (!this.collides(p.x, p.z + mz * step, CHARACTER_RADIUS)) p.z += mz * step;
+      // Give up on a click target the character can't reach (walked into a wall).
+      this.stuckTime = p.x + p.z === before ? this.stuckTime + dt : 0;
+      if (this.moveTarget && this.stuckTime > 0.35) {
+        this.clearMoveTarget();
+        mx = mz = 0;
+      }
+    }
+
+    // Step smoothly up/down onto floors, the road and the lawn.
+    p.y += (this.floorAt(p.x, p.z) - p.y) * Math.min(1, dt * 15);
+    this.character.root.position.copy(p);
+    this.character.update(dt, mx, mz, running);
+
+    if (this.moveTarget) {
+      const pulse = 1 + Math.sin(performance.now() / 180) * 0.12;
+      this.moveMarker.scale.set(pulse, pulse, 1);
+    }
+  }
+
+  /** Click / tap on the ground in character mode: walk there (double-click: run). */
+  private clickToMove(clientX: number, clientY: number) {
+    const hit = this.groundPointAt(clientX, clientY, new THREE.Vector3(), this.charPos.y);
+    if (!hit || hit.distanceTo(this.charPos) > 150) return;
+    const now = performance.now();
+    this.moveRunning = now - this.lastClickTime < 350;
+    this.lastClickTime = now;
+    this.moveTarget = hit;
+    this.stuckTime = 0;
+    this.moveMarker.position.set(hit.x, this.floorAt(hit.x, hit.z) + 0.06, hit.z);
+    this.moveMarker.visible = true;
+  }
+
+  private clearMoveTarget() {
+    this.moveTarget = null;
+    this.moveMarker.visible = false;
+  }
+
+  /**
+   * Places `out` behind and above the character, looking at it. The camera is
+   * pulled in when a wall is in the way and kept under the ceiling indoors.
+   */
+  private placeFollowCamera(dt: number, out: THREE.Object3D, snap = false) {
+    const f = this.follow;
+    const target = this.followTarget.set(this.charPos.x, this.charPos.y + FOLLOW_TARGET_HEIGHT, this.charPos.z);
+    const cp = Math.cos(f.pitch);
+    const dx = Math.sin(f.yaw) * cp, dy = Math.sin(f.pitch), dz = Math.cos(f.yaw) * cp;
+    const id = regionAt(this.charPos.x, this.charPos.z);
+    const indoors = this.roofVisible && (id === 'guestRoom' || (id?.startsWith('plot') ?? false));
+
+    let allowed = f.dist;
+    for (let d = 0.6; d <= f.dist; d += 0.25) {
+      const x = target.x + dx * d, y = target.y + dy * d, z = target.z + dz * d;
+      const blocked = (y < WALL_H + 0.8 && this.collides(x, z, 0.3))
+        // Indoors: stay under the ceiling and inside the same house (not out through a doorway).
+        || (indoors && (y > WALL_H - 0.9 || regionAt(x, z) !== id));
+      if (blocked) {
+        allowed = Math.max(1.2, d - 0.45);
+        break;
+      }
+    }
+    // Snap in immediately when blocked; ease back out when the view clears.
+    f.curDist = snap || allowed < f.curDist ? allowed : f.curDist + (allowed - f.curDist) * Math.min(1, dt * 3);
+    out.position.set(target.x + dx * f.curDist, target.y + dy * f.curDist, target.z + dz * f.curDist);
+    out.position.y = Math.max(out.position.y, this.charPos.y + 1.0);
+    out.lookAt(target);
+  }
+
   private moveWalker(forwardAmt: number, strafeAmt: number) {
     const { walk } = this;
     const sinY = Math.sin(walk.yaw), cosY = Math.cos(walk.yaw);
@@ -376,6 +592,7 @@ export class HouseEngine {
       el.setPointerCapture(e.pointerId);
       if (pointers.size === 1 && this.navMode === 'orbit' && !isRotateDrag(e)) startGrab(e.clientX, e.clientY);
       else this.grabPoint = null;
+      this.clickStart = pointers.size === 1 && e.button === 0 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
     });
 
     this.listen(el, 'pointermove', (e) => {
@@ -393,6 +610,8 @@ export class HouseEngine {
         if (this.navMode === 'orbit') {
           if (curDist > 0 && prevDist > 0) this.zoomAt(midX, midY, prevDist / curDist);
           this.panOrbit((cur.x - prev.x) / 2, (cur.y - prev.y) / 2);
+        } else if (this.navMode === 'character') {
+          if (curDist > 0 && prevDist > 0) this.zoomFollow(prevDist / curDist);
         } else {
           this.moveWalker((curDist - prevDist) * 0.08, 0);
         }
@@ -414,6 +633,10 @@ export class HouseEngine {
           if (!this.grabPoint) startGrab(prev.x, prev.y);
           this.dragGround(cur.x, cur.y, dx, dy);
         }
+      } else if (this.navMode === 'character') {
+        // Drag: swing the camera around the character (drag right → look right).
+        this.follow.yaw -= dx * 0.006;
+        this.follow.pitch = clamp(this.follow.pitch + dy * 0.005, -0.2, 1.3);
       } else {
         walk.yaw -= dx * 0.0042;
         walk.pitch = clamp(walk.pitch - dy * 0.0038, -1.15, 1.15);
@@ -421,6 +644,15 @@ export class HouseEngine {
     });
 
     const release = (e: PointerEvent) => {
+      // A quick press without dragging is a click: in character mode, walk there.
+      const c = this.clickStart;
+      this.clickStart = null;
+      if (
+        e.type === 'pointerup' && c && this.navMode === 'character' && pointers.size === 1
+        && Math.hypot(e.clientX - c.x, e.clientY - c.y) < 6 && performance.now() - c.t < 500
+      ) {
+        this.clickToMove(e.clientX, e.clientY);
+      }
       pointers.delete(e.pointerId);
       // Lifting one finger of a pinch: re-grab under the remaining finger.
       this.grabPoint = null;
@@ -438,6 +670,8 @@ export class HouseEngine {
 
       if (this.navMode === 'orbit') {
         this.zoomAt(e.clientX, e.clientY, Math.exp(delta * (e.ctrlKey ? 0.01 : 0.0015)));
+      } else if (this.navMode === 'character') {
+        this.zoomFollow(Math.exp(delta * (e.ctrlKey ? 0.01 : 0.0015)));
       } else {
         this.moveWalker(-delta * 0.03, 0);
       }
@@ -452,6 +686,11 @@ export class HouseEngine {
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
+  }
+
+  /** Scroll / pinch in character mode: follow-camera distance, from over-the-shoulder to far. */
+  private zoomFollow(factor: number) {
+    this.follow.dist = clamp(this.follow.dist * factor, 3, 45);
   }
 
   /** WASD / arrows / on-screen pad → -1..1 forward and strafe intent. */
@@ -478,6 +717,9 @@ export class HouseEngine {
     for (const fan of this.world.ceilingFans) fan.rotation.y += dt * 3.6;
 
     const { fwd, str } = this.moveIntent();
+    const playing = this.navMode === 'character';
+    if (playing) this.updateCharacter(dt, fwd, str);
+
     if (this.transition) {
       const tr = this.transition;
       tr.t += dt / tr.duration;
@@ -495,6 +737,8 @@ export class HouseEngine {
       }
       camera.position.copy(this.computeOrbitPos());
       camera.lookAt(orbit.target);
+    } else if (playing) {
+      this.placeFollowCamera(dt, camera);
     } else {
       const speed = 15.5 * dt;
       if (fwd !== 0 || str !== 0) this.moveWalker(fwd * speed, str * speed);
@@ -506,8 +750,8 @@ export class HouseEngine {
     // Report the location only once the camera has settled, so a fly-through
     // never flashes the names of the rooms it passes over.
     if (!this.transition) {
-      const isWalk = this.navMode === 'walk';
-      const info = describeLocation(isWalk, camera.position.x, camera.position.z);
+      const here = playing ? this.charPos : camera.position;
+      const info = describeLocation(this.navMode !== 'orbit', here.x, here.z);
       if (info.id !== this.lastRoomId) {
         this.lastRoomId = info.id;
         this.callbacks.onLocationChange(info);
@@ -515,11 +759,14 @@ export class HouseEngine {
     }
 
     if (this.minimapCtx) {
-      drawMinimap(this.minimapCtx, this.navMode === 'walk'
-        ? { x: walk.pos.x, z: walk.pos.z, yaw: walk.yaw }
-        : { x: orbit.target.x, z: orbit.target.z, yaw: null });
+      drawMinimap(this.minimapCtx, playing
+        ? { x: this.charPos.x, z: this.charPos.z, yaw: this.character.yaw }
+        : this.navMode === 'walk'
+          ? { x: walk.pos.x, z: walk.pos.z, yaw: walk.yaw }
+          : { x: orbit.target.x, z: orbit.target.z, yaw: null });
     }
 
+    this.sky.follow(camera);
     this.renderer.render(this.scene, camera);
   };
 }

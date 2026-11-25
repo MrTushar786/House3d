@@ -1,3 +1,5 @@
+import { BATHROOMS } from './constants';
+
 export const MINIMAP_WIDTH = 220;
 export const MINIMAP_HEIGHT = 230;
 
@@ -51,6 +53,8 @@ export function drawMinimap(ctx: CanvasRenderingContext2D, viewer: MinimapViewer
   rect(42, 22, 64, 34, '#dbeeff');
   rect(64, 22, 103, 45, '#fce1e4');
   rect(0, 51, 40, 77, '#ddf7e3');
+  // Toilet + bathrooms
+  for (const [x1, z1, x2, z2] of BATHROOMS) rect(x1, z1, x2, z2, '#9fd3f0', '#3b82a6');
 
   ctx.fillStyle = '#0f172a';
   ctx.font = 'bold 10px Inter, sans-serif';

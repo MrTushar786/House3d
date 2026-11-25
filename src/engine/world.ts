@@ -14,12 +14,22 @@ export interface InteriorLight {
   baseIntensity: number;
 }
 
+export interface Floor {
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  top: number;
+}
+
 export interface World {
   roofGroup: THREE.Group;
   dimsGroup: THREE.Group;
   colliders: Collider[];
   interiorLights: InteriorLight[];
   ceilingFans: THREE.Group[];
+  /** Walkable floor slabs (houses, road, lawn, lane) with their top height in feet. */
+  floors: Floor[];
 }
 
 interface Opening {
@@ -43,29 +53,39 @@ export function buildWorld(scene: THREE.Scene): World {
   const colliders: Collider[] = [];
   const interiorLights: InteriorLight[] = [];
   const ceilingFans: THREE.Group[] = [];
+  const floors: Floor[] = [];
 
   // ---------------------------------------------------------------------------
   // Materials — distinct palette for each of the 4 brothers' houses
   // ---------------------------------------------------------------------------
   const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(p);
 
-  const matH1Ext = std({ map: tex.stucco, color: 0xfaf0eb, roughness: 0.8 });
-  const matH1Int = std({ color: 0xfdf7f4, roughness: 0.88 });
+  // Exterior plaster gets a fine bump so walls catch light like real sand-faced render.
+  const plaster = (color: number) =>
+    std({ map: tex.stucco, color, roughness: 0.86, bumpMap: tex.bumpNoise, bumpScale: 0.012 });
+  const paint = (color: number) => std({ color, roughness: 0.9, bumpMap: tex.bumpNoise, bumpScale: 0.004 });
+
+  const matH1Ext = plaster(0xfaf0eb);
+  const matH1Int = paint(0xfdf7f4);
   const matH1Accent = std({ color: 0xb8523d, roughness: 0.6 });
 
-  const matH2Ext = std({ map: tex.stucco, color: 0xedf6ee, roughness: 0.8 });
-  const matH2Int = std({ color: 0xf5fbf6, roughness: 0.88 });
+  const matH2Ext = plaster(0xedf6ee);
+  const matH2Int = paint(0xf5fbf6);
 
-  const matH3Ext = std({ map: tex.stucco, color: 0xeef5fc, roughness: 0.8 });
-  const matH3Int = std({ color: 0xf6fafe, roughness: 0.88 });
+  const matH3Ext = plaster(0xeef5fc);
+  const matH3Int = paint(0xf6fafe);
   const matH3Accent = std({ color: 0x2c4c70, roughness: 0.55 });
 
-  const matH4Ext = std({ map: tex.stucco, color: 0xf7ecd9, roughness: 0.82 });
-  const matH4Int = std({ color: 0xfcf6ec, roughness: 0.88 });
+  const matH4Ext = plaster(0xf7ecd9);
+  const matH4Int = paint(0xfcf6ec);
 
   const matDarkFrame = std({ color: 0x1e293b, roughness: 0.4, metalness: 0.3 });
-  const matWoodDoor = std({ color: 0x7c4a26, roughness: 0.6 });
-  const matGlass = std({ color: 0x93c5fd, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.36 });
+  const matWoodDoor = std({ map: tex.wood, color: 0x9a6a44, roughness: 0.55 });
+  const matPvcDoor = std({ color: 0xe9ecef, roughness: 0.45 });
+  // Clear float glass: mostly reflection of the sky, slightly tinted.
+  const matGlass = std({
+    color: 0xa9c4d6, roughness: 0.04, metalness: 0.4, transparent: true, opacity: 0.32, envMapIntensity: 2.2,
+  });
   const matCeiling = std({ color: 0xfafaf9, roughness: 0.9 });
   // One flat roof colour per house (muted version of each house's theme)
   const ROOF_COLORS = {
@@ -80,7 +100,13 @@ export function buildWorld(scene: THREE.Scene): World {
   const matWalnut = std({ color: 0x4a2e1b, roughness: 0.5 });
   const matCreamFabric = std({ color: 0xf1ece1, roughness: 0.9 });
   const matGranite = std({ color: 0x1e293b, roughness: 0.2, metalness: 0.25 });
-  const matSteel = std({ color: 0xcbd5e1, roughness: 0.25, metalness: 0.8 });
+  const matSteel = std({ color: 0xd4d8dd, roughness: 0.18, metalness: 0.95 });
+  const matPorcelain = std({ color: 0xfbfbfa, roughness: 0.12, envMapIntensity: 1.3 });
+  const matMirror = std({ color: 0xffffff, roughness: 0.02, metalness: 1.0, envMapIntensity: 1.6 });
+  const matShowerGlass = std({
+    color: 0xd6e6ee, roughness: 0.03, metalness: 0.2, transparent: true, opacity: 0.22, envMapIntensity: 2,
+  });
+  const matLightPanel = std({ color: 0xffffff, emissive: 0xfff4e0, emissiveIntensity: 1.0, roughness: 0.4 });
   const matScreen = std({ color: 0x090d16, roughness: 0.15, metalness: 0.5 });
   const leafMats = [
     std({ color: 0x2d6a32, roughness: 0.85 }),
@@ -89,9 +115,12 @@ export function buildWorld(scene: THREE.Scene): World {
   ];
 
   // ---------------------------------------------------------------------------
-  // Clean architectural base plane
+  // Ground: bare earth with dry grass patches around the plot
   // ---------------------------------------------------------------------------
-  const basePlane = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), std({ color: 0xdbe3ea, roughness: 0.95 }));
+  const basePlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(1800, 1800),
+    std({ map: tex.soil, roughness: 0.97, bumpMap: tex.soil, bumpScale: 0.03, envMapIntensity: 0.4 }),
+  );
   basePlane.rotation.x = -Math.PI / 2;
   basePlane.position.set(50, -0.05, 53);
   basePlane.receiveShadow = true;
@@ -100,11 +129,15 @@ export function buildWorld(scene: THREE.Scene): World {
   // ---------------------------------------------------------------------------
   // Primitive helpers
   // ---------------------------------------------------------------------------
+  /** Ceiling light: a point light plus the visible flush-mount fitting it comes from. */
   function addWarmLight(x: number, y: number, z: number, color: number, intensity: number, distance: number) {
     const pl = new THREE.PointLight(color, intensity, distance, 1.6);
     pl.position.set(x, y, z);
     scene.add(pl);
     interiorLights.push({ light: pl, baseIntensity: intensity });
+    const fitting = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.12, 24), matLightPanel);
+    fitting.position.set(x, WALL_H - 0.36, z);
+    roofGroup.add(fitting); // hidden with the ceiling in roof-cutaway mode
   }
 
   function addBox(
@@ -177,6 +210,7 @@ export function buildWorld(scene: THREE.Scene): World {
             leaf.position.set(leafW / 2, (doorH - 0.18) / 2, 0);
             leaf.castShadow = true;
             pivot.add(leaf);
+            for (const side of [-0.13, 0.13]) addBox(0.5, 0.07, 0.07, leafW - 0.45, 3.4, side, matSteel, pivot, false, false);
             pivot.rotation.y = op.swing || 1.25;
           } else {
             pivot.position.set(startX, 0, startZ + oStart + 0.2);
@@ -184,6 +218,7 @@ export function buildWorld(scene: THREE.Scene): World {
             leaf.position.set(0, (doorH - 0.18) / 2, leafW / 2);
             leaf.castShadow = true;
             pivot.add(leaf);
+            for (const side of [-0.13, 0.13]) addBox(0.07, 0.07, 0.5, side, 3.4, leafW - 0.45, matSteel, pivot, false, false);
             pivot.rotation.y = op.swing || -1.25;
           }
           parent.add(pivot);
@@ -223,6 +258,7 @@ export function buildWorld(scene: THREE.Scene): World {
   function addSlab(x1: number, z1: number, x2: number, z2: number, mat: THREE.Material, yTop = 0.4, parent: Parent = siteGroup) {
     const w = x2 - x1, d = z2 - z1;
     addBox(w, yTop, d, x1 + w / 2, yTop / 2, z1 + d / 2, mat, parent, false, true);
+    floors.push({ x1, z1, x2, z2, top: yTop });
   }
 
   // 1) Bada Rasta (main wide road, south-east)
@@ -403,7 +439,7 @@ export function buildWorld(scene: THREE.Scene): World {
     addBox(x2 - x1, 0.3, z2 - z1, (x1 + x2) / 2, WALL_H - 0.15, (z1 + z2) / 2, matCeiling, roofGroup, false, false);
     const rx1 = x1 - oh('west'), rx2 = x2 + oh('east');
     const rz1 = z1 - oh('north'), rz2 = z2 + oh('south');
-    const mat = std({ color, roughness: 0.85 });
+    const mat = std({ map: tex.concrete, color, roughness: 0.88, bumpMap: tex.bumpNoise, bumpScale: 0.003 });
     addBox(rx2 - rx1, ROOF_T, rz2 - rz1, (rx1 + rx2) / 2, WALL_H + ROOF_T / 2, (rz1 + rz2) / 2, mat, roofGroup);
   }
 
@@ -418,6 +454,123 @@ export function buildWorld(scene: THREE.Scene): World {
       (x1 + x2) / 2, WALL_H + ROOF_T + DIVIDER_H / 2, (z1 + z2) / 2,
       matRoofDivider, roofGroup,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Toilet + bathroom: western WC, shower with glass partition and geyser,
+  // washbasin vanity with mirror, 7 ft wall tiles, anti-skid floor, light.
+  //
+  // Laid out in a local frame anchored on the back wall: u runs along the back
+  // wall (left → right as seen from the door), v runs from the back wall toward
+  // the door, which is always on the front wall.
+  //   back wall:  [ WC ]............[ shower ]
+  //   left wall:  basin + mirror near the door
+  // ---------------------------------------------------------------------------
+  type Side = 'north' | 'south' | 'east' | 'west';
+  const BATH_FRAME: Record<Side, { rot: number; left: Side; right: Side; front: Side }> = {
+    north: { rot: 0, left: 'west', right: 'east', front: 'south' },
+    south: { rot: Math.PI, left: 'east', right: 'west', front: 'north' },
+    west: { rot: Math.PI / 2, left: 'south', right: 'north', front: 'east' },
+    east: { rot: -Math.PI / 2, left: 'north', right: 'south', front: 'west' },
+  };
+
+  /** Clones a 4 ft tile texture so it repeats at true scale over a w × h ft surface. */
+  function tiledMat(base: THREE.Texture, w: number, h: number, params: THREE.MeshStandardMaterialParameters) {
+    const t = base.clone();
+    t.needsUpdate = true;
+    t.repeat.set(w / 4, h / 4);
+    return std({ ...params, map: t });
+  }
+
+  function addBathroom(b: {
+    x1: number; z1: number; x2: number; z2: number;
+    /** Wall the WC and shower stand against (the door is on the opposite wall). */
+    back: Side;
+    /** Thickness of each surrounding wall, so fittings sit flush on the inner faces. */
+    walls: Record<Side, number>;
+  }) {
+    const f = BATH_FRAME[b.back];
+    const alongX = b.back === 'north' || b.back === 'south';
+    const W = alongX ? b.x2 - b.x1 : b.z2 - b.z1;
+    const D = alongX ? b.z2 - b.z1 : b.x2 - b.x1;
+    const cx = (b.x1 + b.x2) / 2, cz = (b.z1 + b.z2) / 2;
+
+    const g = new THREE.Group();
+    g.rotation.y = f.rot;
+    g.position.set(
+      b.back === 'west' ? b.x1 : b.back === 'east' ? b.x2 : cx,
+      0.4,
+      b.back === 'north' ? b.z1 : b.back === 'south' ? b.z2 : cz,
+    );
+    furnGroup.add(g);
+
+    const v0 = b.walls[b.back] / 2, vF = D - b.walls[f.front] / 2;
+    const uL = -W / 2 + b.walls[f.left] / 2, uR = W / 2 - b.walls[f.right] / 2;
+    const iw = uR - uL, id = vF - v0, uMid = (uL + uR) / 2, vMid = (v0 + vF) / 2;
+    const box = (w: number, h: number, d: number, u: number, y: number, v: number, m: THREE.Material, cast = true) =>
+      addBox(w, h, d, u, y, v, m, g, cast, true);
+    const cyl = (rt: number, rb: number, h: number, u: number, y: number, v: number, m: THREE.Material, sz = 1) => {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 24), m);
+      mesh.position.set(u, y, v);
+      mesh.scale.z = sz;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      g.add(mesh);
+      return mesh;
+    };
+
+    // Floor + wall tiles (7 ft dado) on the back and side walls
+    const TILE_H = 7, TT = 0.04;
+    box(iw, 0.04, id, uMid, 0.02, vMid, tiledMat(tex.bathFloorTile, iw, id, { roughness: 0.7 }), false);
+    box(iw, TILE_H, TT, uMid, TILE_H / 2, v0 + TT / 2, tiledMat(tex.bathWallTile, iw, TILE_H, { roughness: 0.18 }), false);
+    const sideTile = tiledMat(tex.bathWallTile, id, TILE_H, { roughness: 0.18 });
+    box(TT, TILE_H, id, uL + TT / 2, TILE_H / 2, vMid, sideTile, false);
+    box(TT, TILE_H, id, uR - TT / 2, TILE_H / 2, vMid, sideTile, false);
+
+    // Shower corner (right end of the back wall)
+    const showerW = Math.min(3, iw - 2.6);
+    const sU = uR - showerW / 2, sDepth = 3;
+    box(showerW, 0.12, sDepth, sU, 0.06, v0 + sDepth / 2, std({ color: 0xdfe4e7, roughness: 0.5 }), false);
+    cyl(0.12, 0.12, 0.02, sU, 0.13, v0 + 1.5, matDarkFrame); // floor drain
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(TT, 6.4, sDepth - 0.3), matShowerGlass);
+    glass.position.set(uR - showerW, 0.12 + 3.2, v0 + (sDepth - 0.3) / 2);
+    g.add(glass);
+    box(0.06, 0.06, sDepth - 0.3, uR - showerW, 6.35, v0 + (sDepth - 0.3) / 2, matSteel, false); // glass top rail
+    cyl(0.05, 0.05, 3.4, sU, 4.9, v0 + TT + 0.08, matSteel); // riser pipe
+    box(0.07, 0.07, 0.6, sU, 6.6, v0 + 0.4, matSteel, false); // shower arm
+    cyl(0.33, 0.33, 0.06, sU, 6.56, v0 + 0.7, matSteel); // rain head
+    box(0.45, 0.32, 0.12, sU, 3.6, v0 + TT + 0.06, matSteel); // mixer
+    cyl(0.55, 0.55, 1.5, sU, 8.35, v0 + 0.62, matPorcelain); // geyser
+    cyl(0.08, 0.08, 0.04, sU, 8.35, v0 + 1.18, matDarkFrame).rotation.x = Math.PI / 2; // geyser dial
+
+    // Western WC (left end of the back wall)
+    const wcU = uL + 1.2;
+    box(1.5, 1.35, 0.55, wcU, 2.08, v0 + TT + 0.3, matPorcelain); // cistern
+    cyl(0.1, 0.1, 0.04, wcU, 2.78, v0 + 0.35, matSteel); // flush button
+    box(0.55, 0.45, 0.5, wcU, 1.1, v0 + 0.65, matPorcelain); // trap
+    cyl(0.62, 0.42, 1.3, wcU, 0.65, v0 + 1.4, matPorcelain, 1.25); // bowl
+    cyl(0.66, 0.66, 0.08, wcU, 1.34, v0 + 1.4, matPorcelain, 1.25); // seat
+    box(0.12, 0.12, 0.35, wcU - 1.0, 2.9, v0 + 0.25, matSteel, false); // health-faucet holder
+
+    // Washbasin vanity + mirror (left wall, near the door)
+    const bv = vF - 1.2;
+    box(1.55, 2.5, 2.0, uL + TT + 0.78, 1.25, bv, matTeak); // vanity cabinet
+    box(1.7, 0.1, 2.15, uL + TT + 0.85, 2.55, bv, matGranite); // counter
+    cyl(0.48, 0.36, 0.24, uL + TT + 0.85, 2.72, bv, matPorcelain); // basin bowl
+    box(0.08, 0.36, 0.08, uL + TT + 0.25, 2.78, bv, matSteel, false); // tap body
+    box(0.36, 0.06, 0.06, uL + TT + 0.42, 2.94, bv, matSteel, false); // spout
+    box(0.04, 2.3, 1.9, uL + TT + 0.03, 4.55, bv, matMirror, false); // mirror
+
+    // Towel rail + towel on the right wall, outside the shower
+    if (id - sDepth > 1.6) {
+      const tv = v0 + sDepth + (id - sDepth) / 2;
+      box(0.1, 0.06, 1.5, uR - TT - 0.12, 4.7, tv, matSteel, false);
+      box(0.05, 1.5, 1.1, uR - TT - 0.16, 4.0, tv, std({ color: 0x5b8fb9, roughness: 0.95 }), false);
+    }
+
+    // Exhaust fan above the WC + ceiling light
+    box(0.9, 0.9, 0.12, wcU, 8.5, v0 + TT + 0.06, std({ color: 0xcfd4d8, roughness: 0.5 }), false);
+    addWarmLight(cx, 9.4, cz, 0xf3f6ff, 0.4, 12);
   }
 
   function addRug(x: number, z: number, w: number, d: number, color: number) {
@@ -497,6 +650,12 @@ export function buildWorld(scene: THREE.Scene): World {
     { offset: 13.5, width: 3.4, type: 'door', swing: -1.2 },
   ], siteGroup);
   buildWall(87, 33.5, 103, 33.5, INT_T, matH1Int, [], siteGroup);
+  // Attached toilet + bath in the master bedroom's north-west corner (6 × 5.5 ft)
+  buildWall(93, 22, 93, 27.5, INT_T, matH1Int, [], siteGroup);
+  buildWall(87, 27.5, 93, 27.5, INT_T, matH1Int, [
+    { offset: 2.8, width: 2.6, type: 'door', swing: -1.2, doorMat: matPvcDoor },
+  ], siteGroup);
+  addBathroom({ x1: 87, z1: 22, x2: 93, z2: 27.5, back: 'north', walls: { north: EXT_T, south: INT_T, west: INT_T, east: INT_T } });
 
   addFlatRoof(64, 22, 103, 45, ROOF_COLORS.h1, { west: false });
   addHouseSign('HOUSE 1', 63.4, 8.9, 39.5, -Math.PI / 2, '#b8523d');
@@ -509,8 +668,8 @@ export function buildWorld(scene: THREE.Scene): World {
   addTVWall(85.8, 38.5, -Math.PI / 2);
   addDiningSet(79.5, 27.5, 0);
   // Master bedroom (87..103, 22..33.5)
-  addDoubleBed(96.5, 27.5, -Math.PI / 2, 0x9f1239);
-  addWardrobe(91.5, 23.4, 0, 5.5);
+  addDoubleBed(97.0, 27.5, -Math.PI / 2, 0x9f1239);
+  addWardrobe(92.2, 32.4, Math.PI, 5.5);
   // Bedroom 2 (87..103, 33.5..45)
   addDoubleBed(96.5, 39.2, -Math.PI / 2, 0xbe123c);
   addWardrobe(91.5, 43.6, Math.PI, 5.5);
@@ -546,6 +705,12 @@ export function buildWorld(scene: THREE.Scene): World {
   buildWall(7, 64, 23, 64, INT_T, matH2Int, [{ offset: 11.5, width: 3.4, type: 'door', swing: 1.2 }], siteGroup);
   buildWall(23, 64, 23, 77, INT_T, matH2Int, [], siteGroup);
   buildWall(28, 65, 28, 77, INT_T, matH2Int, [{ offset: 1.5, width: 5.5, type: 'arch', leaf: false }], siteGroup);
+  // Attached toilet + bath in the master bedroom's north-east corner (6 × 5.5 ft)
+  buildWall(10, 51, 10, 56.5, INT_T, matH2Int, [], siteGroup);
+  buildWall(10, 56.5, 16, 56.5, INT_T, matH2Int, [
+    { offset: 2.4, width: 2.6, type: 'door', swing: -1.2, doorMat: matPvcDoor },
+  ], siteGroup);
+  addBathroom({ x1: 10, z1: 51, x2: 16, z2: 56.5, back: 'north', walls: { north: EXT_T, south: INT_T, west: INT_T, east: INT_T } });
 
   addFlatRoof(0, 51, 40, 77, ROOF_COLORS.h2, { north: false, east: false });
   // Chota Rasta is House 2's covered side passage — same green roof, open at the south end
@@ -562,8 +727,8 @@ export function buildWorld(scene: THREE.Scene): World {
   addKitchenUnit(34.2, 75.6, 7.5, Math.PI);
   // Master bedroom (x=0..16, z=51..64)
   addDoubleBed(5.8, 57.5, Math.PI / 2, 0x047857);
-  addWardrobe(11.5, 52.4, 0, 5.5);
-  addStudyDesk(11.5, 62.2, Math.PI);
+  addWardrobe(7.0, 62.9, Math.PI, 5.5);
+  addStudyDesk(12.5, 62.2, Math.PI);
   // Bedroom 2 (x=7..23, z=64..77)
   addDoubleBed(15, 72.2, Math.PI, 0x0f766e);
   addWardrobe(8.4, 70.5, Math.PI / 2, 5.5);
@@ -600,6 +765,12 @@ export function buildWorld(scene: THREE.Scene): World {
   buildWall(22.5, 11.5, 42, 11.5, INT_T, matH3Int, [{ offset: 14.5, width: 3.4, type: 'door', swing: -1.2 }], siteGroup);
   buildWall(22.5, 22.5, 36.5, 22.5, INT_T, matH3Int, [], siteGroup);
   buildWall(36.5, 11.5, 36.5, 22.5, INT_T, matH3Int, [{ offset: 5.5, width: 3.4, type: 'door', swing: 1.2 }], siteGroup);
+  // Attached toilet + bath in the master bedroom's north-east corner (6 × 6.5 ft)
+  buildWall(36, 0, 36, 6.5, INT_T, matH3Int, [], siteGroup);
+  buildWall(36, 6.5, 42, 6.5, INT_T, matH3Int, [
+    { offset: 2.6, width: 2.6, type: 'door', swing: -1.2, doorMat: matPvcDoor },
+  ], siteGroup);
+  addBathroom({ x1: 36, z1: 0, x2: 42, z2: 6.5, back: 'north', walls: { north: EXT_T, south: INT_T, west: INT_T, east: EXT_T } });
 
   // L-shaped: two slabs that meet at x=42 without overlapping
   addFlatRoof(22.5, 0, 42, 34, ROOF_COLORS.h3, { east: false, west: false });
@@ -616,7 +787,7 @@ export function buildWorld(scene: THREE.Scene): World {
   addKitchenUnit(58.2, 23.4, 6.5, 0);
   // Master bedroom (22.5..42, 0..11.5)
   addDoubleBed(28.5, 5.8, Math.PI / 2, 0x1d4ed8);
-  addWardrobe(37.5, 1.4, 0, 5.5);
+  addWardrobe(31, 10.4, Math.PI, 5.5);
   // Bedroom 2 (22.5..36.5, 11.5..22.5)
   addDoubleBed(27.5, 17.0, Math.PI / 2, 0x2563eb);
   addStudyDesk(33.5, 20.8, Math.PI);
@@ -644,6 +815,12 @@ export function buildWorld(scene: THREE.Scene): World {
   buildWall(0, 23.5, 16.5, 23.5, INT_T, matH4Int, [], siteGroup);
   buildWall(16.5, 12, 16.5, 23.5, INT_T, matH4Int, [{ offset: 6.5, width: 3.4, type: 'door', swing: 1.2 }], siteGroup);
   buildWall(0, 35, 10, 35, INT_T, matH4Int, [], siteGroup);
+  // Attached toilet + bath in the master bedroom's north-east corner (6 × 6.5 ft)
+  buildWall(16.5, 0, 16.5, 6.5, INT_T, matH4Int, [], siteGroup);
+  buildWall(16.5, 6.5, 22.5, 6.5, INT_T, matH4Int, [
+    { offset: 2.6, width: 2.6, type: 'door', swing: -1.2, doorMat: matPvcDoor },
+  ], siteGroup);
+  addBathroom({ x1: 16.5, z1: 0, x2: 22.5, z2: 6.5, back: 'north', walls: { north: EXT_T, south: INT_T, west: INT_T, east: EXT_T } });
 
   addFlatRoof(0, 0, 22.5, 51, ROOF_COLORS.h4, { east: false, south: false });
 
@@ -668,7 +845,6 @@ export function buildWorld(scene: THREE.Scene): World {
   // Master bedroom (z=0..12)
   addDoubleBed(11.2, 4.8, 0, 0x92400e);
   addWardrobe(1.8, 6.0, Math.PI / 2, 6.0);
-  addStudyDesk(19.0, 4.5, -Math.PI / 2);
   addCeilingFan(11.2, 43);
   addCeilingFan(14.5, 29.2);
   addCeilingFan(11.2, 6.0);
@@ -697,6 +873,13 @@ export function buildWorld(scene: THREE.Scene): World {
   // West wall: z=68..77 is House 2's east wall (shared); only z=77..88 is new
   buildWall(40, 77, 40, 88, EXT_T, matGuestExt, [], siteGroup);
   buildWall(40, 88, 58.5, 88, EXT_T, matGuestExt, [], siteGroup);
+  // Attached toilet + bath in the south-east corner (6 × 6 ft)
+  const matGuestInt = paint(0xf8f6fb);
+  buildWall(52.5, 82, 52.5, 88, INT_T, matGuestInt, [], siteGroup);
+  buildWall(52.5, 82, 58.5, 82, INT_T, matGuestInt, [
+    { offset: 0.5, width: 2.6, type: 'door', swing: 1.2, doorMat: matPvcDoor },
+  ], siteGroup);
+  addBathroom({ x1: 52.5, z1: 82, x2: 58.5, z2: 88, back: 'south', walls: { north: INT_T, south: EXT_T, west: INT_T, east: EXT_T } });
 
   addFlatRoof(40, 68, 58.5, 88, ROOF_COLORS.guest, { west: false });
   addRoofDivider(40, 68, 40, 77); // House 2 | Guest Room
@@ -708,9 +891,8 @@ export function buildWorld(scene: THREE.Scene): World {
   addSofa(42, 74, 6.5, Math.PI / 2, 0x4c1d95);
   addCoffeeTable(45.8, 74, Math.PI / 2);
   addDoubleBed(47.5, 84.3, Math.PI, 0x6d28d9);
-  addWardrobe(57.1, 82, -Math.PI / 2, 5.5);
   addCeilingFan(49.25, 77);
   addWarmLight(49.25, 9.2, 77, 0xfff1e0, 0.65, 30);
 
-  return { roofGroup, dimsGroup, colliders, interiorLights, ceilingFans };
+  return { roofGroup, dimsGroup, colliders, interiorLights, ceilingFans, floors };
 }

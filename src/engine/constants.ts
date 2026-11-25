@@ -6,7 +6,8 @@ export const EXT_T = 0.75; // 9-inch exterior brick wall
 export const INT_T = 0.42; // 5-inch interior partition wall
 export const EYE_H = 5.3; // Realistic human eye level (5 ft 4 in)
 
-export type NavMode = 'orbit' | 'walk';
+/** orbit = aerial view, walk = first-person, character = third-person game character. */
+export type NavMode = 'orbit' | 'walk' | 'character';
 
 export type RoomId =
   | 'aerial'
@@ -123,33 +124,52 @@ export const ROOM_PRESETS: Record<RoomId, RoomPreset> = {
 export type TimeOfDay = 'morning' | 'noon' | 'sunset' | 'night';
 
 export interface TimeOfDayConfig {
-  sky: number;
-  fog: number;
+  /** Sky colour straight up. */
+  skyTop: number;
+  /** Sky colour at the horizon; distance fog fades into this. */
+  skyHorizon: number;
+  /** Colour of the (unseen) ground below the horizon, for environment reflections. */
+  skyGround: number;
   sunPos: Vec3;
   sunColor: number;
   sunInt: number;
   hemiSky: number;
   hemiGround: number;
   hemiInt: number;
+  /** Strength of sky reflections / image-based ambient light. */
+  envInt: number;
   interiorMul: number;
   exposure: number;
 }
 
 export const TOD_CONFIG: Record<TimeOfDay, TimeOfDayConfig> = {
   morning: {
-    sky: 0xc2e2f7, fog: 0xd8ebf7, sunPos: [140, 75, 45], sunColor: 0xffe4b5, sunInt: 1.15,
-    hemiSky: 0xeaf6ff, hemiGround: 0x64748b, hemiInt: 0.68, interiorMul: 0.45, exposure: 1.05,
+    skyTop: 0x5f9bd6, skyHorizon: 0xf0dcc4, skyGround: 0x8a7f6c,
+    sunPos: [140, 75, 45], sunColor: 0xffe2b8, sunInt: 1.9,
+    hemiSky: 0xdcebff, hemiGround: 0x7a6e5c, hemiInt: 0.35, envInt: 0.7, interiorMul: 0.45, exposure: 0.74,
   },
   noon: {
-    sky: 0xcce6f7, fog: 0xd8ebf7, sunPos: [105, 145, 95], sunColor: 0xfff8eb, sunInt: 1.32,
-    hemiSky: 0xeef7ff, hemiGround: 0x64748b, hemiInt: 0.78, interiorMul: 0.35, exposure: 1.06,
+    skyTop: 0x3f86d4, skyHorizon: 0xd3e5f3, skyGround: 0x8f8673,
+    sunPos: [105, 145, 95], sunColor: 0xfff6e6, sunInt: 2.2,
+    hemiSky: 0xe4f0ff, hemiGround: 0x7d7262, hemiInt: 0.4, envInt: 0.75, interiorMul: 0.35, exposure: 0.68,
   },
   sunset: {
-    sky: 0xe89774, fog: 0xe5a485, sunPos: [-115, 42, 75], sunColor: 0xff8c42, sunInt: 1.15,
-    hemiSky: 0xfdba74, hemiGround: 0x3b2f2f, hemiInt: 0.55, interiorMul: 1.15, exposure: 1.02,
+    skyTop: 0x34457a, skyHorizon: 0xf2a267, skyGround: 0x5e4636,
+    sunPos: [-115, 42, 75], sunColor: 0xff9248, sunInt: 1.9,
+    hemiSky: 0xf7b98a, hemiGround: 0x3b2f2f, hemiInt: 0.3, envInt: 0.65, interiorMul: 1.15, exposure: 0.8,
   },
   night: {
-    sky: 0x0b132b, fog: 0x0f172a, sunPos: [-80, 110, -70], sunColor: 0x93c5fd, sunInt: 0.25,
-    hemiSky: 0x1e293b, hemiGround: 0x0f172a, hemiInt: 0.38, interiorMul: 1.85, exposure: 0.98,
+    skyTop: 0x03060f, skyHorizon: 0x16203a, skyGround: 0x0b0d12,
+    sunPos: [-80, 110, -70], sunColor: 0x9db8e8, sunInt: 0.22,
+    hemiSky: 0x1e293b, hemiGround: 0x0f172a, hemiInt: 0.22, envInt: 0.5, interiorMul: 1.85, exposure: 1.05,
   },
 };
+
+/** Toilet + bathroom footprints [x1, z1, x2, z2] in feet, one per house plus the guest room. */
+export const BATHROOMS: readonly (readonly [number, number, number, number])[] = [
+  [87, 22, 93, 27.5], // House 1
+  [10, 51, 16, 56.5], // House 2
+  [36, 0, 42, 6.5], // House 3
+  [16.5, 0, 22.5, 6.5], // House 4
+  [52.5, 82, 58.5, 88], // Guest room
+];
