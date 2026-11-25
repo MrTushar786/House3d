@@ -88,6 +88,8 @@ export class HouseEngine {
   private readonly ndc = new THREE.Vector2();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly hit = new THREE.Vector3();
+  /** Ground point grabbed by a left-drag in aerial view; null when not grabbing. */
+  private grabPoint: THREE.Vector3 | null = null;
 
   private minimapCtx: CanvasRenderingContext2D | null = null;
   private lastRoomId = '';
@@ -258,11 +260,8 @@ export class HouseEngine {
     const k = newRadius / orbit.radius;
     if (k === 1) return;
 
-    const rect = this.container.getBoundingClientRect();
-    this.ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    this.raycaster.setFromCamera(this.ndc, this.camera);
-    this.groundPlane.constant = -orbit.target.y;
-    const p = this.raycaster.ray.intersectPlane(this.groundPlane, this.hit);
+    this.syncOrbitCamera();
+    const p = this.groundPointAt(clientX, clientY, this.hit);
 
     // Move the target toward the point by the same fraction the camera moves,
     // so the point under the cursor stays put on screen.
@@ -272,6 +271,40 @@ export class HouseEngine {
       this.clampTarget();
     }
     orbit.radius = newRadius;
+  }
+
+  /** Point on the ground plane (at the orbit target's height) under a screen position, or null above the horizon. */
+  private groundPointAt(clientX: number, clientY: number, out: THREE.Vector3): THREE.Vector3 | null {
+    const rect = this.container.getBoundingClientRect();
+    this.ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.ndc, this.camera);
+    this.groundPlane.constant = -this.orbit.target.y;
+    return this.raycaster.ray.intersectPlane(this.groundPlane, out);
+  }
+
+  /** Puts the camera exactly where the orbit state says, so raycasts match what's on screen. */
+  private syncOrbitCamera() {
+    if (this.navMode !== 'orbit' || this.transition) return;
+    this.camera.position.copy(this.computeOrbitPos());
+    this.camera.lookAt(this.orbit.target);
+    this.camera.updateMatrixWorld();
+  }
+
+  /**
+   * Map-style drag: moves the view so the ground point grabbed at pointer-down
+   * stays under the cursor. Falls back to screen-space panning above the horizon.
+   */
+  private dragGround(clientX: number, clientY: number, dx: number, dy: number) {
+    const grab = this.grabPoint;
+    const p = grab && this.groundPointAt(clientX, clientY, this.hit);
+    if (grab && p && p.distanceTo(this.orbit.target) < ORBIT.maxRadius * 3) {
+      this.orbit.target.x += grab.x - p.x;
+      this.orbit.target.z += grab.z - p.z;
+      this.clampTarget();
+    } else {
+      this.panOrbit(dx, dy);
+    }
+    this.syncOrbitCamera();
   }
 
   private panOrbit(dx: number, dy: number) {
@@ -328,11 +361,21 @@ export class HouseEngine {
 
     this.listen(el, 'contextmenu', (e) => e.preventDefault());
 
+    /** Left-drag (no modifier) in aerial view grabs the ground; anything else rotates. */
+    const isRotateDrag = (e: PointerEvent) => this.dragButton !== 0 || e.shiftKey || e.ctrlKey || e.altKey;
+
+    const startGrab = (x: number, y: number) => {
+      this.syncOrbitCamera();
+      this.grabPoint = this.groundPointAt(x, y, new THREE.Vector3());
+    };
+
     this.listen(el, 'pointerdown', (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1) this.dragButton = e.button;
       this.transition = null;
       el.setPointerCapture(e.pointerId);
+      if (pointers.size === 1 && this.navMode === 'orbit' && !isRotateDrag(e)) startGrab(e.clientX, e.clientY);
+      else this.grabPoint = null;
     });
 
     this.listen(el, 'pointermove', (e) => {
@@ -342,6 +385,7 @@ export class HouseEngine {
 
       if (pointers.size >= 2) {
         // Two fingers: pinch to zoom (toward the pinch centre) + drag to pan.
+        this.grabPoint = null;
         const other = [...pointers.entries()].find(([id]) => id !== e.pointerId)![1];
         const prevDist = Math.hypot(prev.x - other.x, prev.y - other.y);
         const curDist = Math.hypot(cur.x - other.x, cur.y - other.y);
@@ -360,11 +404,15 @@ export class HouseEngine {
       pointers.set(e.pointerId, cur);
 
       if (this.navMode === 'orbit') {
-        if (this.dragButton === 2 || e.shiftKey) {
-          this.panOrbit(dx, dy);
-        } else {
+        if (isRotateDrag(e)) {
+          // Right-drag (or Shift/Ctrl/Alt + drag): turn and tilt the view.
+          this.grabPoint = null;
           orbit.theta -= dx * 0.0065;
           orbit.phi = clamp(orbit.phi - dy * 0.0065, ORBIT.minPhi, ORBIT.maxPhi);
+        } else {
+          // Left-drag: the ground follows the cursor — drag right, view moves right.
+          if (!this.grabPoint) startGrab(prev.x, prev.y);
+          this.dragGround(cur.x, cur.y, dx, dy);
         }
       } else {
         walk.yaw -= dx * 0.0042;
@@ -374,6 +422,8 @@ export class HouseEngine {
 
     const release = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
+      // Lifting one finger of a pinch: re-grab under the remaining finger.
+      this.grabPoint = null;
       try { el.releasePointerCapture(e.pointerId); } catch { /* already released */ }
     };
     this.listen(el, 'pointerup', release);
